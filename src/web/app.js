@@ -128,23 +128,39 @@ function renderTabs() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "tab " + cls + (d.id === state.id ? " active" : "");
+    const active = d.id === state.id;
     const icon = document.createElement("span");
     icon.className = "ticon";
-    const src = Theme.images["status_" + cls];
+    const src = tabIconSrc(cls, active ? 3 : 0) || themeImg("status_" + cls + "_mini", "status_" + cls);
+    let iconImg = null;
     if (src) {
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = "";
-      icon.textContent = "";
-      icon.append(img);
+      icon.classList.add("img");
+      iconImg = document.createElement("img");
+      iconImg.src = src;
+      iconImg.alt = "";
+      icon.append(iconImg);
     }
     const st = document.createElement("span");
     st.className = "st";
-    st.textContent = d.error ? t("unknown") : t(cls);
+    st.textContent = (d.error ? t("unknown") : t(cls)) + (d.stale ? " *" : "");
     const tm = document.createElement("span");
     tm.className = "tm";
     tm.textContent = fmtTemp(d.temperature);
     b.append(icon, st, tm);
+    if (iconImg) {
+      b.addEventListener("mouseenter", () => {
+        const u = tabIconSrc(cls, 1);
+        if (u) {
+          iconImg.src = u;
+        }
+      });
+      b.addEventListener("mouseleave", () => {
+        const u = tabIconSrc(cls, d.id === state.id ? 3 : 0);
+        if (u) {
+          iconImg.src = u;
+        }
+      });
+    }
     b.addEventListener("click", () => selectDisk(d.id));
     box.append(b);
   }
@@ -173,16 +189,63 @@ function metaRow(c1, v1, c2, v2) {
   return tr;
 }
 
-function setBoxImage(el, slot, text, cls) {
+function applyThemeImages() {
+  const logo = $("themeLogo");
+  if (Theme.images.logo) {
+    logo.src = Theme.images.logo;
+    logo.classList.remove("hidden");
+  } else {
+    logo.removeAttribute("src");
+    logo.classList.add("hidden");
+  }
+  const pre = Theme.frameUrl("pre", 0) || Theme.images.pre;
+  const next = Theme.frameUrl("next", 0) || Theme.images.next;
+  $("preDisk").innerHTML = pre ? `<img src="${pre}" alt="">` : "&#9664;";
+  $("nextDisk").innerHTML = next ? `<img src="${next}" alt="">` : "&#9654;";
+}
+
+function themeImg(...slots) {
+  for (const s of slots) {
+    if (Theme.images[s]) {
+      return Theme.images[s];
+    }
+  }
+  return "";
+}
+
+// tabIconSrc picks the disk-button art frame: 0 normal, 1 hover, 3 selected
+// (CDI sprite strip order, CommonFx.h).
+function tabIconSrc(cls, frame) {
+  for (const slot of ["disk_" + cls + "_mini", "disk_" + cls]) {
+    const u = Theme.frameUrl(slot, frame);
+    if (u) {
+      return u;
+    }
+    if (frame === 0 && Theme.images[slot]) {
+      return Theme.images[slot];
+    }
+  }
+  return "";
+}
+
+function setBoxImage(el, src, text, cls) {
   el.textContent = "";
   el.title = text;
-  el.className = "box " + cls;
-  const src = Theme.images[slot];
+  el.className = "box " + cls + (src ? " has-img" : "");
+  el.style.height = "";
   if (src) {
     const img = document.createElement("img");
     img.className = "sicon";
     img.src = src;
     img.alt = text;
+    img.addEventListener("load", () => {
+      // life art (e.g. Shizuku SD* 128x192) drives the block height like CDI
+      if (cls.indexOf("life") >= 0 && img.naturalWidth > 0) {
+        const w = el.clientWidth || 132;
+        const h = Math.max(30, Math.min(260, Math.round((w * img.naturalHeight) / img.naturalWidth)));
+        el.style.height = h + "px";
+      }
+    });
     el.append(img);
   } else {
     el.textContent = text;
@@ -197,15 +260,15 @@ function renderHead() {
     $("headline").textContent = state.error ? state.error : t("no_disks");
     setBoxImage($("health"), "", "—", "health unknown");
     setBoxImage($("temp"), "", "—", "temp");
-    $("life").textContent = "—";
+    setBoxImage($("life"), "", "—", "life");
     return;
   }
   const cls = healthClass(d.health);
   $("headline").textContent = (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes);
-  setBoxImage($("health"), "status_" + cls, t(cls), "health " + cls);
+  setBoxImage($("health"), themeImg("status_" + cls, "disk_" + cls), t(cls), "health " + cls);
   const tempCls = d.temperature == null ? "unknown" : (d.temperature >= (d.alarm_temp || 99) ? "bad" : "good");
-  setBoxImage($("temp"), "temp_" + tempCls, fmtTemp(d.temperature), "temp");
-  $("life").textContent = d.life == null ? "—" : t("life") + " " + d.life + " %";
+  setBoxImage($("temp"), themeImg("temp_" + tempCls), fmtTemp(d.temperature), "temp");
+  setBoxImage($("life"), themeImg("sd_" + cls), d.life == null ? "—" : t("life") + " " + d.life + " %", "life");
 
   const serial = d.serial ? (state.ui.hideSerial ? "********" : d.serial) : "—";
   const rot = d.rotation_rate ? d.rotation_rate + " " + t("rpm") : t("ssd");
@@ -345,7 +408,7 @@ async function refresh() {
     renderHead();
     renderStatus();
   }
-  Menubar.refresh();
+  refreshMenus();
 }
 
 async function loadAlarms() {
@@ -362,6 +425,54 @@ async function loadSettings() {
     state.settings = await api("/api/settings");
   } catch (e) {
     state.settings = null;
+  }
+}
+
+function refreshMenus() {
+  if (Menubar.isOpen()) {
+    Menubar.refresh();
+  } else {
+    buildMenus();
+  }
+}
+
+function excludedSet() {
+  return new Set((state.settings && state.settings.exclude_disks) || []);
+}
+
+async function putSettings(patch) {
+  await loadSettings();
+  if (!state.settings) {
+    return;
+  }
+  const payload = {
+    interval_seconds: state.settings.interval_seconds,
+    default: state.settings.default,
+    disks: state.settings.disks || {},
+    exclude_disks: state.settings.exclude_disks || []
+  };
+  Object.assign(payload, patch || {});
+  await api("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  await loadSettings();
+  refreshMenus();
+}
+
+async function toggleExclude(id) {
+  const list = excludedSet();
+  if (list.has(id)) {
+    list.delete(id);
+  } else {
+    list.add(id);
+  }
+  try {
+    await putSettings({ exclude_disks: [...list] });
+    refresh();
+  } catch (e) {
+    toast(e.message);
   }
 }
 
@@ -391,6 +502,7 @@ function setZoom(z) {
   state.ui.zoom = z;
   localStorage.setItem("cdifnos.zoom", z);
   applyZoom();
+  refreshMenus();
 }
 
 function setFont(family, size) {
@@ -403,13 +515,14 @@ function setFont(family, size) {
     localStorage.setItem("cdifnos.fontSize", size);
   }
   applyFont();
+  refreshMenus();
 }
 
 function togglePref(key, render) {
   state.ui[key] = !state.ui[key];
   localStorage.setItem("cdifnos." + key, state.ui[key] ? "1" : "0");
   render();
-  Menubar.refresh();
+  refreshMenus();
 }
 
 // ---------- actions ----------
@@ -450,33 +563,28 @@ async function copyInfo() {
 }
 
 async function setIntervalSec(sec) {
-  if (!state.settings) {
-    await loadSettings();
-  }
-  if (!state.settings) return;
   try {
-    await api("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        interval_seconds: sec,
-        default: state.settings.default,
-        disks: state.settings.disks || {}
-      })
-    });
-    await loadSettings();
+    await putSettings({ interval_seconds: sec });
     toast(t("saved"));
   } catch (e) {
     toast(e.message);
   }
-  Menubar.refresh();
 }
 
 async function importThemeFile(file) {
   try {
-    const info = await Theme.importFile(file);
-    await Theme.apply(info.id);
-    toast(t("theme_import_ok"));
+    const res = await Theme.importFile(file);
+    const first = res.themes && res.themes[0];
+    if (first) {
+      await Theme.apply(first.id);
+    }
+    applyThemeImages();
+    const count = (res.themes || []).length;
+    if (res.skipped && res.skipped.length) {
+      toast(t("theme_import_ok") + " (" + count + ") — " + res.skipped[0]);
+    } else {
+      toast(t("theme_import_ok") + (count > 1 ? " (" + count + ")" : ""));
+    }
   } catch (e) {
     toast(t("theme_import_fail") + ": " + e.message);
   }
@@ -484,14 +592,18 @@ async function importThemeFile(file) {
   refresh();
 }
 
-async function deleteTheme() {
-  const id = Theme.current();
-  if (!confirm(t("theme_delete_confirm"))) {
+async function deleteTheme(id) {
+  id = id || Theme.current();
+  if (!confirm(t("theme_delete_confirm") + "\n" + id)) {
     return;
   }
   try {
     await Theme.remove(id);
-    await Theme.apply("classic");
+    if (Theme.current() === id) {
+      await Theme.apply("classic");
+      applyThemeImages();
+    }
+    toast(t("saved"));
   } catch (e) {
     toast(t("theme_import_fail") + ": " + e.message);
   }
@@ -520,20 +632,22 @@ function openAbout() {
 function buildMenus() {
   const themeItems = Theme.list.map((ti) => ({
     label: ti.name,
-    checked: Theme.current() === ti.id,
+    checked: () => Theme.current() === ti.id,
     action: async () => {
       await Theme.apply(ti.id);
+      applyThemeImages();
       refresh();
     }
   }));
   const currentTheme = Theme.current();
-  const isImported = !["classic", "dark", "follow"].includes(currentTheme);
+  const importedThemes = Theme.list.filter((ti) => !ti.builtin);
 
   const menus = [
     {
       label: t("menu_file"),
       items: [
-        { label: t("save_text"), action: downloadReport }
+        { label: t("save_text"), action: downloadReport },
+        { label: t("save_image"), action: () => snapshotMain() }
       ]
     },
     {
@@ -550,7 +664,7 @@ function buildMenus() {
           label: t("auto_refresh"),
           items: INTERVALS.map((sec) => ({
             label: sec >= 60 ? sec / 60 + " min" : sec + " s",
-            checked: state.settings ? state.settings.interval_seconds === sec : sec === 10,
+            checked: () => (state.settings ? state.settings.interval_seconds === sec : sec === 10),
             action: () => setIntervalSec(sec)
           }))
         },
@@ -558,7 +672,7 @@ function buildMenus() {
         { separator: true },
         { label: t("graph"), action: openGraph },
         { separator: true },
-        { label: t("hide_serial_number"), checked: state.ui.hideSerial, action: () => togglePref("hideSerial", renderHead) },
+        { label: t("hide_serial_number"), checked: () => state.ui.hideSerial, action: () => togglePref("hideSerial", renderHead) },
         {
           label: t("alerts"),
           items: [{ label: t("alarm_list"), action: openAlarms }]
@@ -572,15 +686,15 @@ function buildMenus() {
             {
               label: t("temp_unit"),
               items: [
-                { label: t("celsius"), checked: state.ui.unit === "C", action: () => { state.ui.unit = "C"; localStorage.setItem("cdifnos.unit", "C"); refresh(); } },
-                { label: t("fahrenheit"), checked: state.ui.unit === "F", action: () => { state.ui.unit = "F"; localStorage.setItem("cdifnos.unit", "F"); refresh(); } }
+                { label: t("celsius"), checked: () => state.ui.unit === "C", action: () => { state.ui.unit = "C"; localStorage.setItem("cdifnos.unit", "C"); refresh(); } },
+                { label: t("fahrenheit"), checked: () => state.ui.unit === "F", action: () => { state.ui.unit = "F"; localStorage.setItem("cdifnos.unit", "F"); refresh(); } }
               ]
             },
             {
               label: t("raw_values"),
               items: RAW_FORMATS.map((r) => ({
                 label: t(r),
-                checked: state.ui.raw === r,
+                checked: () => state.ui.raw === r,
                 action: () => {
                   state.ui.raw = r;
                   localStorage.setItem("cdifnos.raw", r);
@@ -588,14 +702,22 @@ function buildMenus() {
                 }
               }))
             },
-            { label: t("hide_smart"), checked: state.ui.hideSmart, action: () => togglePref("hideSmart", renderAttrs) },
-            { label: t("hide_no_smart"), checked: state.ui.hideNoSmart, action: () => togglePref("hideNoSmart", () => refresh()) },
+            { label: t("hide_smart"), checked: () => state.ui.hideSmart, action: () => togglePref("hideSmart", renderAttrs) },
+            { label: t("hide_no_smart"), checked: () => state.ui.hideNoSmart, action: () => togglePref("hideNoSmart", () => refresh()) },
+            {
+              label: t("auto_refresh_target"),
+              items: state.disks.map((d) => ({
+                label: d.model || d.device,
+                checked: () => !excludedSet().has(d.id),
+                action: () => toggleExclude(d.id)
+              }))
+            },
             {
               label: t("disk_sort"),
               items: [
-                { label: t("sort_device"), checked: state.ui.sort === "device", action: () => { state.ui.sort = "device"; localStorage.setItem("cdifnos.sort", "device"); refresh(); } },
-                { label: t("sort_model"), checked: state.ui.sort === "model", action: () => { state.ui.sort = "model"; localStorage.setItem("cdifnos.sort", "model"); refresh(); } },
-                { label: t("sort_serial"), checked: state.ui.sort === "serial", action: () => { state.ui.sort = "serial"; localStorage.setItem("cdifnos.sort", "serial"); refresh(); } }
+                { label: t("sort_device"), checked: () => state.ui.sort === "device", action: () => { state.ui.sort = "device"; localStorage.setItem("cdifnos.sort", "device"); refresh(); } },
+                { label: t("sort_model"), checked: () => state.ui.sort === "model", action: () => { state.ui.sort = "model"; localStorage.setItem("cdifnos.sort", "model"); refresh(); } },
+                { label: t("sort_serial"), checked: () => state.ui.sort === "serial", action: () => { state.ui.sort = "serial"; localStorage.setItem("cdifnos.sort", "serial"); refresh(); } }
               ]
             }
           ]
@@ -611,35 +733,43 @@ function buildMenus() {
           label: t("zoom"),
           items: ZOOMS.map((z) => ({
             label: z === "auto" ? t("zoom_auto") : z + "%",
-            checked: state.ui.zoom === z,
+            checked: () => state.ui.zoom === z,
             action: () => setZoom(z)
           }))
         },
         {
           label: t("font_setting"),
           items: [
-            { label: t("font_default"), checked: !state.ui.fontFamily, action: () => setFont("", null) },
-            { label: "Microsoft YaHei", checked: state.ui.fontFamily === "Microsoft YaHei", action: () => setFont("Microsoft YaHei", null) },
-            { label: "Segoe UI", checked: state.ui.fontFamily === "Segoe UI", action: () => setFont("Segoe UI", null) },
-            { label: "Consolas", checked: state.ui.fontFamily === "Consolas", action: () => setFont("Consolas", null) },
+            { label: t("font_default"), checked: () => !state.ui.fontFamily, action: () => setFont("", null) },
+            { label: "Microsoft YaHei", checked: () => state.ui.fontFamily === "Microsoft YaHei", action: () => setFont("Microsoft YaHei", null) },
+            { label: "Segoe UI", checked: () => state.ui.fontFamily === "Segoe UI", action: () => setFont("Segoe UI", null) },
+            { label: "Consolas", checked: () => state.ui.fontFamily === "Consolas", action: () => setFont("Consolas", null) },
             { separator: true },
             ...FONT_SIZES.map((s) => ({
               label: t("font_size") + " " + s,
-              checked: state.ui.fontSize === s,
+              checked: () => state.ui.fontSize === s,
               action: () => setFont(null, s)
             }))
           ]
         },
         { separator: true },
         { label: t("theme_import"), action: () => $("themeFile").click() },
-        ...(isImported ? [{ label: t("theme_delete"), action: deleteTheme }] : [])
+        ...(importedThemes.length
+          ? [{
+              label: t("theme_delete"),
+              items: importedThemes.map((ti) => ({
+                label: ti.name,
+                action: () => deleteTheme(ti.id)
+              }))
+            }]
+          : [])
       ]
     },
     {
       label: t("menu_disk"),
       items: visibleDisks().map((d) => ({
         label: d.model || d.device,
-        checked: d.id === state.id,
+        checked: () => d.id === state.id,
         action: () => selectDisk(d.id)
       }))
     },
@@ -689,30 +819,85 @@ function openAamApm() {
   const d = currentDisk();
   if (!d) return;
   $("aaTitle").textContent = t("aam_apm") + " — " + (d.model || d.device);
-  let cur = t("current") + ": AAM " + (d.aam ?? "—") + " / APM " + (d.apm ?? "—");
-  if (d.aam == null && d.apm == null && !d.nvme) {
-    cur += "\n" + t("aam_apm_unsupported");
-  }
-  $("aaCurrent").textContent = cur;
+  $("aaCurrent").textContent = t("current") + ": AAM " + (d.aam ?? "—") + " / APM " + (d.apm ?? "—");
   $("aaAam").value = d.aam ?? "";
   $("aaApm").value = d.apm ?? "";
   $("aaOut").textContent = "";
   $("dlgAamApm").showModal();
 }
 
+function aamValue(v) {
+  if (!v) {
+    return "—";
+  }
+  return v.enabled ? String(v.level) : t("disabled");
+}
+
+function renderAamOutput(msg, raw) {
+  const box = $("aaOut");
+  box.textContent = "";
+  const p = document.createElement("div");
+  p.textContent = msg;
+  box.append(p);
+  if (raw && raw.trim() && raw.trim() !== msg.trim()) {
+    const det = document.createElement("details");
+    const sum = document.createElement("summary");
+    sum.textContent = t("raw_output");
+    const pre = document.createElement("pre");
+    pre.textContent = raw;
+    det.append(sum, pre);
+    box.append(det);
+  }
+}
+
+async function aamApmQuery() {
+  const d = currentDisk();
+  if (!d) return;
+  $("aaOut").textContent = "...";
+  try {
+    const res = await runRequest("/api/disks/" + encodeURIComponent(d.id) + "/aam-apm-get", {});
+    const raw = res.output || res.error || "";
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // smartctl did not return JSON; fall through to the raw text
+    }
+    if (parsed) {
+      const aam = parsed.ata_aam;
+      const apm = parsed.ata_apm;
+      if (!aam && !apm) {
+        renderAamOutput(t("not_available"), raw);
+        return;
+      }
+      const msg = t("current") + ": AAM " + aamValue(aam) + " / APM " + aamValue(apm);
+      $("aaCurrent").textContent = msg;
+      renderAamOutput(msg, raw);
+      return;
+    }
+    renderAamOutput(res.error || raw, raw);
+  } catch (e) {
+    renderAamOutput(e.message, "");
+  }
+}
+
 async function aamApmAction(kind, value) {
   const d = currentDisk();
   if (!d) return;
   if (!/^(off|[1-9][0-9]{0,2})$/.test(value)) {
-    $("aaOut").textContent = t("value_required");
+    renderAamOutput(t("value_required"), "");
     return;
   }
   $("aaOut").textContent = "...";
   try {
     const res = await runRequest("/api/disks/" + encodeURIComponent(d.id) + "/aam-apm", { kind, value });
-    $("aaOut").textContent = res.output || res.error || JSON.stringify(res);
+    if (res.error && !res.output) {
+      renderAamOutput(res.error, "");
+    } else {
+      renderAamOutput(res.output || JSON.stringify(res), res.output || "");
+    }
   } catch (e) {
-    $("aaOut").textContent = e.message;
+    renderAamOutput(e.message, "");
   }
   refresh();
 }
@@ -935,6 +1120,7 @@ function applyStaticTexts() {
   $("aaAamOff").textContent = t("off");
   $("aaApmSet").textContent = t("set");
   $("aaApmOff").textContent = t("off");
+  $("aaGet").textContent = t("query");
   $("grTitle").textContent = t("graph");
   $("grDraw").textContent = t("draw");
   $("seTitle").textContent = t("settings");
@@ -986,6 +1172,7 @@ function initControls() {
   $("aaAamOff").onclick = () => aamApmAction("aam", "off");
   $("aaApmSet").onclick = () => aamApmAction("apm", $("aaApm").value.trim());
   $("aaApmOff").onclick = () => aamApmAction("apm", "off");
+  $("aaGet").onclick = aamApmQuery;
   $("grDraw").onclick = drawGraphNow;
   $("seSave").onclick = saveSettings;
   $("bannerClose").onclick = () => {
@@ -1022,6 +1209,7 @@ async function init() {
   initControls();
   await Theme.loadList();
   await Theme.apply(Theme.current());
+  applyThemeImages();
   await loadSettings();
   buildMenus();
   refresh();

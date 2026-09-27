@@ -24,6 +24,10 @@ Decisions that supersede conflicting text below:
   subprocess that runs smartctl and writes `$TRIM_PKGVAR/cache.json` atomically, then starts
   the `serve` subprocess via `runuser -u $TRIM_USERNAME`. Web never touches disks or smartctl.
 - Rescan: `serve` touches `$TRIM_PKGVAR/rescan`; collector checks/removes it every second.
+- Root mode caveat: the package manager owns `$TRIM_PKGVAR` as root after install/upgrade,
+  while the web process runs as the package user. `cmd/main` (root) must run
+  `ensure_var_perms` (`chown -R` + `setfacl -R`) before starting the processes, or
+  requests/settings/theme imports fail with `open ...: permission denied`.
 - Entry: `iframe` on plain port 7817 for MVP; unified gateway deferred.
 - Repo layout: fnpack package root is `cdifnos/`; Go source is `src/`; build with `build.ps1`.
   fnpack CLI lives in `tools/fnpack.exe` (Windows build, gitignored if repo is initialized).
@@ -55,6 +59,19 @@ Decisions that supersede conflicting text below:
   theme.json get a best-effort manifest from asset names (themes.go). Served via `/themes/`.
 - Display prefs (client-side): zoom, font family/size, temperature unit, raw value format,
   hide serial, hide SMART table, hide no-SMART disks, disk sort.
+- v0.4: menu checked-state evaluated at paint time (`checked: () => ...`); CDI theme packs
+  decode `theme.ini` ([Color]/[Alpha]/ParentTheme) plus `<asset>-<zoom>.png` assets
+  (themes.go, one zoom per asset kept, multi-theme zips supported, re-importing the same
+  theme id overwrites the previous pack); asset slots are family-correct and deterministic:
+  `disk_*` (top buttons) / `status_*` (health) / `sd_*` (life) / `temp_*` / `background` /
+  `logo` / `pre|next|nodisk`; CDI sprite strips are split into per-frame PNGs at import
+  (disk buttons 4 frames normal/hover/focus/selected, pre/next 2) and the UI picks frames
+  like CDI; AAM/APM values are
+  queried on demand (`aam-apm-get`) instead of inferred, raw smartctl output is collapsed;
+  `exclude_disks` removes disks from auto refresh (collector marks them `stale`);
+  File > Save Image renders the current view to PNG via snapshot.js. Character themes draw
+  the backdrop 1:1 from the top-left (CDI pattern-brush behavior) with blur + alpha floor 0.65
+  for readability.
 - Local E2E harness: `go -C src build -o fake/smartctl.exe ./testdata/fake-smartctl`
   and prepend `fake/` to PATH when running the dev binary.
 

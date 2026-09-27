@@ -168,11 +168,13 @@ const EXTRA = {
     font_size: "Size", font_default: "Default",
     about: "About", about_smart: "About S.M.A.R.T.",
     about_text: "DiskInfo for fnOS — a CrystalDiskInfo-style disk health viewer.\nInspired by CrystalDiskInfo (MIT). SMART data via smartmontools.",
-    theme_import: "Import Theme Pack...", theme_delete: "Delete Current Theme",
+    theme_import: "Import Theme Pack...", theme_delete: "Delete Theme...",
     theme_import_ok: "Theme imported", theme_import_fail: "Import failed",
     theme_delete_confirm: "Delete this theme?", theme_custom: "Custom Theme",
     copy_ok: "Copied to clipboard", copy_fail: "Copy failed",
     aam_apm_unsupported: "Device does not report AAM/APM support",
+    query: "Read", save_image: "Save Image", auto_refresh_target: "Auto Refresh Target",
+    not_available: "Device does not provide AAM/APM data", disabled: "disabled", raw_output: "Raw output",
     value_required: "Enter a value between 1 and 254"
   },
   "zh-CN": {
@@ -189,11 +191,13 @@ const EXTRA = {
     font_size: "字号", font_default: "默认",
     about: "关于", about_smart: "关于 S.M.A.R.T.",
     about_text: "DiskInfo for fnOS —— CrystalDiskInfo 风格的硬盘健康查看器。\n灵感来自 CrystalDiskInfo（MIT）。SMART 数据来自 smartmontools。",
-    theme_import: "导入主题包…", theme_delete: "删除当前主题",
+    theme_import: "导入主题包…", theme_delete: "删除主题…",
     theme_import_ok: "主题已导入", theme_import_fail: "导入失败",
     theme_delete_confirm: "确定删除该主题？", theme_custom: "自定义主题",
     copy_ok: "已复制到剪贴板", copy_fail: "复制失败",
     aam_apm_unsupported: "设备未上报 AAM/APM 支持",
+    query: "读取", save_image: "保存图片", auto_refresh_target: "自动刷新对象",
+    not_available: "设备未提供 AAM/APM 数据", disabled: "已禁用", raw_output: "原始输出",
     value_required: "请输入 1-254 之间的数值"
   },
   "zh-TW": {
@@ -210,11 +214,13 @@ const EXTRA = {
     font_size: "字級", font_default: "預設",
     about: "關於", about_smart: "關於 S.M.A.R.T.",
     about_text: "DiskInfo for fnOS —— CrystalDiskInfo 風格的硬碟健康檢視器。\n靈感來自 CrystalDiskInfo（MIT）。SMART 資料來自 smartmontools。",
-    theme_import: "匯入主題包…", theme_delete: "刪除目前主題",
+    theme_import: "匯入主題包…", theme_delete: "刪除主題…",
     theme_import_ok: "主題已匯入", theme_import_fail: "匯入失敗",
     theme_delete_confirm: "確定刪除該主題？", theme_custom: "自訂主題",
     copy_ok: "已複製到剪貼簿", copy_fail: "複製失敗",
     aam_apm_unsupported: "裝置未回報 AAM/APM 支援",
+    query: "讀取", save_image: "儲存圖片", auto_refresh_target: "自動重新整理對象",
+    not_available: "裝置未提供 AAM/APM 資料", disabled: "已停用", raw_output: "原始輸出",
     value_required: "請輸入 1-254 之間的數值"
   },
   ja: {
@@ -231,11 +237,13 @@ const EXTRA = {
     font_size: "文字サイズ", font_default: "デフォルト",
     about: "バージョン情報", about_smart: "S.M.A.R.T. について",
     about_text: "DiskInfo for fnOS — CrystalDiskInfo スタイルのディスク健康ビューア。\nCrystalDiskInfo (MIT) にインスパイアされました。SMART データは smartmontools によるものです。",
-    theme_import: "テーマをインポート…", theme_delete: "現在のテーマを削除",
+    theme_import: "テーマをインポート…", theme_delete: "テーマを削除…",
     theme_import_ok: "テーマをインポートしました", theme_import_fail: "インポートに失敗しました",
     theme_delete_confirm: "このテーマを削除しますか？", theme_custom: "カスタムテーマ",
     copy_ok: "クリップボードにコピーしました", copy_fail: "コピーに失敗しました",
     aam_apm_unsupported: "AAM/APM 非対応のデバイスです",
+    query: "読み取り", save_image: "画像を保存", auto_refresh_target: "自動更新の対象",
+    not_available: "デバイスは AAM/APM 情報を提供していません", disabled: "無効", raw_output: "生の出力",
     value_required: "1〜254 の値を入力してください"
   }
 };

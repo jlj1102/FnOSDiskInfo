@@ -43,6 +43,16 @@
 
 .hidden { display: none !important; }
 
+/* character themes: blur what sits on the backdrop so text stays readable */
+body.themed-bg .menubar,
+body.themed-bg .workarea,
+body.themed-bg .attrwrap,
+body.themed-bg .tab,
+body.themed-bg .menu-drop {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
 html, body { height: 100%; }
 
 body {
@@ -145,7 +155,8 @@ body {
 
 .tab.active { border-top: 3px solid var(--cdi-accent); font-weight: 700; }
 .tab .ticon { width: 16px; height: 16px; border-radius: 50%; background: var(--cdi-unknown); }
-.tab .ticon img { width: 16px; height: 16px; display: block; }
+.tab .ticon.img { background: none; width: auto; height: auto; }
+.tab .ticon img { max-width: 24px; max-height: 24px; width: auto; height: auto; object-fit: contain; display: block; }
 .tab.good .ticon { background: var(--cdi-good); }
 .tab.caution .ticon { background: var(--cdi-caution); }
 .tab.bad .ticon { background: var(--cdi-bad); }
@@ -170,12 +181,25 @@ body {
 /* ---------- work area ---------- */
 
 .workarea {
+  position: relative;
   display: flex;
   gap: 10px;
   padding: 8px;
   background: var(--cdi-panel);
   border: 1px solid var(--cdi-border);
 }
+
+.theme-logo {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  max-height: 44px;
+  max-width: 140px;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.pager img { max-height: 16px; display: block; }
 
 .left { display: flex; flex-direction: column; gap: 8px; width: 132px; }
 
@@ -189,6 +213,13 @@ body {
   font-weight: 700;
 }
 
+/* themes that ship status art: no colored frame behind the image */
+.box.has-img {
+  padding: 0;
+  border: none;
+  background: none !important;
+}
+
 .health { height: 56px; font-size: 17px; }
 .temp { height: 56px; font-size: 17px; }
 .life { min-height: 30px; font-size: 12px; font-weight: 400; }
@@ -198,7 +229,7 @@ body {
 .health.bad { background: var(--cdi-bad); color: #fff; }
 .health.unknown { background: var(--cdi-unknown); color: #fff; }
 
-.sicon { max-width: 100px; max-height: 48px; }
+.sicon { max-width: 100%; max-height: 100%; object-fit: contain; }
 
 .right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
@@ -326,6 +357,10 @@ dialog h3 { margin: 0 0 8px; font-size: 14px; }
   background: var(--cdi-panel);
   border: 1px solid var(--cdi-border);
 }
+
+.out details { margin-top: 6px; }
+.out details summary { cursor: pointer; color: var(--cdi-accent); }
+.out details pre { margin: 4px 0 0; white-space: pre-wrap; }
 
 .about-body p { margin: 6px 0; white-space: pre-line; }
 .about-body a { color: var(--cdi-accent); }

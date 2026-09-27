@@ -109,5 +109,5 @@ const Menubar = (() => {
     }
   });
 
-  return { render, refresh, close };
+  return { render, refresh, close, isOpen: () => openIndex !== -1 };
 })();

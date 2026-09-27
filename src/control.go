@@ -128,6 +128,8 @@ func (c *collector) execRequest(r request) requestResult {
 		args = append(args, "-t", r.TestType)
 	case "abort-test":
 		args = append(args, "-X")
+	case "aam-apm-get":
+		args = append(args, "-j", "-g", "aam", "-g", "apm")
 	case "aam", "apm":
 		if !requestValuePattern.MatchString(r.Value) {
 			res.Error = "invalid value"

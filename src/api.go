@@ -33,6 +33,7 @@ func newHandler(dataDir string) http.Handler {
 	mux.HandleFunc("POST /api/disks/{id}/self-test", s.handleSelfTest)
 	mux.HandleFunc("POST /api/disks/{id}/abort-test", s.handleAbortTest)
 	mux.HandleFunc("POST /api/disks/{id}/aam-apm", s.handleAamApm)
+	mux.HandleFunc("POST /api/disks/{id}/aam-apm-get", s.handleAamApmGet)
 	mux.HandleFunc("GET /api/requests/{id}", s.handleRequest)
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
@@ -196,7 +197,10 @@ func (s *server) handleRescan(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
 		return
 	}
-	_ = os.WriteFile(filepath.Join(s.dataDir, "rescan"), []byte("1"), 0644)
+	if err := os.WriteFile(filepath.Join(s.dataDir, "rescan"), []byte("1"), 0644); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 }
 
@@ -243,6 +247,10 @@ func (s *server) handleSelfTest(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleAbortTest(w http.ResponseWriter, r *http.Request) {
 	s.submit(w, r, "abort-test", nil)
+}
+
+func (s *server) handleAamApmGet(w http.ResponseWriter, r *http.Request) {
+	s.submit(w, r, "aam-apm-get", nil)
 }
 
 func (s *server) handleAamApm(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +378,11 @@ func validateSettings(s settings) error {
 			}
 		}
 	}
+	for _, id := range s.ExcludeDisks {
+		if !validDiskID(id) {
+			return fmt.Errorf("invalid exclude_disks id: %s", id)
+		}
+	}
 	return nil
 }
 
@@ -386,12 +399,13 @@ func (s *server) handleThemeImport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
 		return
 	}
-	info, err := importTheme(s.dataDir, r.Body)
+	nameHint := r.URL.Query().Get("name")
+	infos, skipped, err := importThemes(s.dataDir, r.Body, nameHint)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "skipped": skipped})
 		return
 	}
-	writeJSON(w, http.StatusOK, info)
+	writeJSON(w, http.StatusOK, map[string]any{"themes": infos, "skipped": skipped})
 }
 
 func (s *server) handleThemeDelete(w http.ResponseWriter, r *http.Request) {

@@ -24,6 +24,7 @@
       <div class="headline" id="headline"></div>
       <table class="meta"><tbody id="meta"></tbody></table>
     </div>
+    <img id="themeLogo" class="theme-logo hidden" alt="">
   </div>
   <div class="banner hidden" id="banner">
     <span id="bannerText"></span>
@@ -62,6 +63,7 @@
     <input id="aaAam" type="number" min="1" max="254">
     <button id="aaAamSet" type="button"></button>
     <button id="aaAamOff" type="button"></button>
+    <button id="aaGet" type="button"></button>
   </div>
   <div class="dlg-row">
     <label>APM</label>
@@ -69,7 +71,7 @@
     <button id="aaApmSet" type="button"></button>
     <button id="aaApmOff" type="button"></button>
   </div>
-  <pre class="out" id="aaOut"></pre>
+  <div class="out" id="aaOut"></div>
   <div class="dlg-actions"><button class="close" type="button"></button></div>
 </dialog>
 
@@ -112,6 +114,7 @@
 <script src="graph.js"></script>
 <script src="menubar.js"></script>
 <script src="theme.js"></script>
+<script src="snapshot.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

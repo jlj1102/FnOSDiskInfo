@@ -26,6 +26,7 @@ type settings struct {
 	IntervalSeconds int                     `json:"interval_seconds"`
 	Default         diskSettings            `json:"default"`
 	Disks           map[string]diskOverride `json:"disks,omitempty"`
+	ExcludeDisks    []string                `json:"exclude_disks,omitempty"`
 }
 
 func defaultSettings() settings {
@@ -60,7 +61,28 @@ func loadSettings(dataDir string) settings {
 	s.Default.ThresholdC5 = clampThreshold(s.Default.ThresholdC5, 1)
 	s.Default.ThresholdC6 = clampThreshold(s.Default.ThresholdC6, 1)
 	s.Default.ThresholdFF = clampThreshold(s.Default.ThresholdFF, 10)
+	out := s.ExcludeDisks[:0]
+	for _, id := range s.ExcludeDisks {
+		if validDiskID(id) {
+			out = append(out, id)
+		}
+	}
+	s.ExcludeDisks = append([]string{}, out...)
 	return s
+}
+
+func validDiskID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.', r == ':':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func clampThreshold(v, def int) int {

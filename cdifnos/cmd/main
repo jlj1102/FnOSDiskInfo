@@ -16,6 +16,20 @@ status() {
     pgrep -f "${PATTERN}" > /dev/null 2>&1
 }
 
+### The package manager owns $TRIM_PKGVAR as root in root mode, but the web
+### process (dropped to $TRIM_USERNAME) must write requests/settings/themes.
+ensure_var_perms() {
+    mkdir -p "${TRIM_PKGVAR}" 2>/dev/null
+    chown -R "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "${TRIM_PKGVAR}" 2>/dev/null
+    chmod 0755 "${TRIM_PKGVAR}" 2>/dev/null
+    if command -v setfacl >/dev/null 2>&1; then
+        setfacl -R -m "u:${TRIM_USERNAME}:rwx" "${TRIM_PKGVAR}" 2>/dev/null
+        setfacl -R -d -m "u:${TRIM_USERNAME}:rwx" "${TRIM_PKGVAR}" 2>/dev/null
+    fi
+    rm -f "${TRIM_PKGVAR}/rescan" "${TRIM_PKGVAR}/settings.json.tmp" 2>/dev/null
+    log_msg "var perms ensured for ${TRIM_USERNAME} (uid=$(id -u))"
+}
+
 start_process() {
     if status; then
         return 0
@@ -25,6 +39,7 @@ start_process() {
         log_msg "ERROR: ${SRV} not found"
         return 1
     fi
+    ensure_var_perms
     chmod +x "${SRV}" 2>/dev/null
     log_msg "Starting collector as root ..."
     "${SRV}" collect --data "${TRIM_PKGVAR}" --interval 10s >> ${LOG_FILE} 2>&1 &

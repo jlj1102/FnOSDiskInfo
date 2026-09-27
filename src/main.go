@@ -122,7 +122,20 @@ func (c *collector) collect() {
 			resp.Error = err.Error()
 			break
 		}
+		excluded := map[string]bool{}
+		for _, id := range c.settings.ExcludeDisks {
+			excluded[id] = true
+		}
+		prevByDevice := map[string]Disk{}
+		for _, d := range c.disks {
+			prevByDevice[d.Device] = d
+		}
 		for _, dev := range devices {
+			if prev, ok := prevByDevice[dev.Path]; ok && excluded[prev.ID] {
+				prev.Stale = true
+				resp.Disks = append(resp.Disks, prev)
+				continue
+			}
 			raw, j, err := readSmart(c.smartctl, dev)
 			if err != nil {
 				resp.Disks = append(resp.Disks, Disk{

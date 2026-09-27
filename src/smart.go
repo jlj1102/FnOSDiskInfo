@@ -83,6 +83,7 @@ type Disk struct {
 	APM           *int        `json:"apm,omitempty"`
 	Error         string      `json:"error,omitempty"`
 	Attributes    []Attribute `json:"attributes,omitempty"`
+	Stale         bool        `json:"stale,omitempty"`
 
 	smartType   string
 	smartPassed *bool
