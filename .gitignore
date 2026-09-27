@@ -1,5 +1,6 @@
 # build artifacts
 tools/
+fake/
 *.fpk
 cdi-dev.exe
 *.log

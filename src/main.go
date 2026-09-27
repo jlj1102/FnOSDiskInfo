@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +15,7 @@ import (
 	"time"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 //go:embed web
 var webFiles embed.FS
@@ -34,15 +33,47 @@ type collector struct {
 	mu       sync.Mutex
 	smartctl string
 	dataDir  string
-	interval time.Duration
+	settings settings
+	setMtime time.Time
+	disks    []Disk
+	kickCh   chan struct{}
+
+	lastHistory      map[string]historyPoint
+	lastHistoryWrite map[string]time.Time
+	prevHealth       map[string]string
+	prevTemp         map[string]string
 }
 
-func newCollector(dataDir string, interval time.Duration) *collector {
-	return &collector{dataDir: dataDir, interval: interval}
+func newCollector(dataDir string) *collector {
+	c := &collector{
+		dataDir:          dataDir,
+		settings:         defaultSettings(),
+		kickCh:           make(chan struct{}, 1),
+		lastHistory:      map[string]historyPoint{},
+		lastHistoryWrite: map[string]time.Time{},
+		prevHealth:       map[string]string{},
+		prevTemp:         map[string]string{},
+	}
+	c.maybeReloadSettings()
+	c.seedHistory()
+	return c
 }
 
 func (c *collector) cachePath() string { return filepath.Join(c.dataDir, "cache.json") }
 func (c *collector) kickPath() string  { return filepath.Join(c.dataDir, "rescan") }
+
+func (c *collector) kick() {
+	select {
+	case c.kickCh <- struct{}{}:
+	default:
+	}
+}
+
+func (c *collector) interval() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Duration(c.settings.IntervalSeconds) * time.Second
+}
 
 func (c *collector) run() {
 	c.collect()
@@ -50,12 +81,28 @@ func (c *collector) run() {
 	defer tick.Stop()
 	last := time.Now()
 	for range tick.C {
+		c.maybeReloadSettings()
+		c.processRequests()
 		kicked := os.Remove(c.kickPath()) == nil
-		if kicked || time.Since(last) >= c.interval {
+		if kicked || time.Since(last) >= c.interval() {
 			c.collect()
 			last = time.Now()
 		}
 	}
+}
+
+func (c *collector) maybeReloadSettings() {
+	st, err := os.Stat(settingsPath(c.dataDir))
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if st.ModTime().Equal(c.setMtime) {
+		return
+	}
+	c.settings = loadSettings(c.dataDir)
+	c.setMtime = st.ModTime()
 }
 
 func (c *collector) collect() {
@@ -76,7 +123,7 @@ func (c *collector) collect() {
 			break
 		}
 		for _, dev := range devices {
-			j, err := readSmart(c.smartctl, dev)
+			raw, j, err := readSmart(c.smartctl, dev)
 			if err != nil {
 				resp.Disks = append(resp.Disks, Disk{
 					ID:     "dev-" + sanitize(strings.TrimPrefix(dev.Path, "/dev/")),
@@ -86,23 +133,41 @@ func (c *collector) collect() {
 				})
 				continue
 			}
-			resp.Disks = append(resp.Disks, normalize(dev, j))
+			disk := normalize(dev, j)
+			disk.evaluateHealth(c.settings.forDisk(disk.ID, disk.NVMe != nil))
+			c.writeRaw(disk.ID, raw)
+			now := time.Now()
+			c.appendHistory(&disk, now)
+			c.updateAlarms(&disk, now)
+			resp.Disks = append(resp.Disks, disk)
 		}
 	}
+	c.disks = resp.Disks
 
-	raw, err := json.Marshal(resp)
+	out, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("cache marshal: %v", err)
 		return
 	}
 	tmp := c.cachePath() + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0644); err != nil {
+	if err := os.WriteFile(tmp, out, 0644); err != nil {
 		log.Printf("cache write: %v", err)
 		return
 	}
 	if err := os.Rename(tmp, c.cachePath()); err != nil {
 		log.Printf("cache rename: %v", err)
 	}
+}
+
+func (c *collector) writeRaw(id string, raw []byte) {
+	if len(raw) == 0 || id == "" {
+		return
+	}
+	dir := filepath.Join(c.dataDir, "raw")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(dir, id+".json"), raw, 0644)
 }
 
 func readCache(path string) (disksResponse, error) {
@@ -112,69 +177,6 @@ func readCache(path string) (disksResponse, error) {
 		return resp, err
 	}
 	return resp, json.Unmarshal(raw, &resp)
-}
-
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func handler(dataDir string) http.Handler {
-	cachePath := filepath.Join(dataDir, "cache.json")
-	kickPath := filepath.Join(dataDir, "rescan")
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/disks", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := readCache(cachePath)
-		if err != nil {
-			writeJSON(w, http.StatusServiceUnavailable, disksResponse{
-				Version: version,
-				Error:   "collector has not produced a cache yet",
-			})
-			return
-		}
-		writeJSON(w, http.StatusOK, resp)
-	})
-	mux.HandleFunc("GET /api/disks/{id}", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := readCache(cachePath)
-		if err == nil {
-			for _, d := range resp.Disks {
-				if d.ID == r.PathValue("id") {
-					writeJSON(w, http.StatusOK, d)
-					return
-				}
-			}
-		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown disk id"})
-	})
-	mux.HandleFunc("GET /api/disks/{id}/smart", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := readCache(cachePath)
-		if err == nil {
-			for _, d := range resp.Disks {
-				if d.ID == r.PathValue("id") {
-					attrs := d.Attributes
-					if attrs == nil {
-						attrs = []Attribute{}
-					}
-					writeJSON(w, http.StatusOK, map[string]any{"id": d.ID, "device": d.Device, "attributes": attrs})
-					return
-				}
-			}
-		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown disk id"})
-	})
-	mux.HandleFunc("POST /api/disks/rescan", func(w http.ResponseWriter, r *http.Request) {
-		_ = os.WriteFile(kickPath, []byte("1"), 0644)
-		writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
-	})
-
-	sub, err := fs.Sub(webFiles, "web")
-	if err != nil {
-		log.Fatal(err)
-	}
-	mux.Handle("/", http.FileServerFS(sub))
-	return mux
 }
 
 func main() {
@@ -188,7 +190,7 @@ func main() {
 	flags := flag.NewFlagSet("cdi-server", flag.ExitOnError)
 	port := flags.Int("port", 7817, "HTTP listen port")
 	data := flags.String("data", ".", "writable data directory")
-	interval := flags.Duration("interval", 10*time.Second, "collection interval")
+	_ = flags.Duration("interval", 10*time.Second, "accepted for compatibility; use settings.json")
 	_ = flags.Parse(args)
 
 	if err := os.MkdirAll(*data, 0755); err != nil {
@@ -202,16 +204,16 @@ func main() {
 	addr := fmt.Sprintf(":%d", *port)
 	switch mode {
 	case "collect":
-		newCollector(*data, *interval).run()
+		newCollector(*data).run()
 	case "serve":
 		log.Printf("cdifnos %s serving on %s", version, addr)
-		if err := http.ListenAndServe(addr, handler(*data)); err != nil {
+		if err := http.ListenAndServe(addr, newHandler(*data)); err != nil {
 			log.Fatal(err)
 		}
 	case "all":
-		go newCollector(*data, *interval).run()
+		go newCollector(*data).run()
 		log.Printf("cdifnos %s listening on %s (single process)", version, addr)
-		if err := http.ListenAndServe(addr, handler(*data)); err != nil {
+		if err := http.ListenAndServe(addr, newHandler(*data)); err != nil {
 			log.Fatal(err)
 		}
 	default:

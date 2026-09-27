@@ -30,6 +30,28 @@ Decisions that supersede conflicting text below:
 
 ---
 
+# 0.2 Implemented feature map (v0.2, 2026-09-27)
+
+- Health engine: good/caution/bad/unknown, configurable caution thresholds
+  (05/C5/C6 default 1, FF default 10; `settings.json`), NVMe critical-warning /
+  available-spare rules, status reasons, Life % (NVMe percentage_used; ATA SSD
+  wear-attribute heuristic in health.go).
+- History: `$TRIM_PKGVAR/history/<id>.jsonl`, written only on change (60s throttle),
+  pruned at 4 MB / 10k points on collector start. API:
+  `GET /api/disks/{id}/history?metric=&points=`.
+- Alarms: `$TRIM_PKGVAR/alarms.jsonl` on health / temperature class transitions;
+  `GET /api/alarms`; frontend banner + dialog.
+- Controls (privileged): web writes `$TRIM_PKGVAR/requests/<id>.json`; root collector
+  executes self-test / abort / AAM / APM with a whitelist + value regex, resolves the
+  disk from its own snapshot, writes `<id>.result`. Frontend polls `GET /api/requests/{id}`.
+- Settings: `$TRIM_PKGVAR/settings.json` owned/written by the app user; collector reloads
+  on mtime change. Display prefs (unit, raw format, hide serial, theme, language) are client-side.
+- Reports: `GET /api/disks/{id}/report.txt` (CDI-style text), `/raw` (raw smartctl JSON).
+- Local E2E harness: `go -C src build -o fake/smartctl.exe ./testdata/fake-smartctl`
+  and prepend `fake/` to PATH when running the dev binary.
+
+---
+
 ## 0. Mission
 
 Build a **native fnOS FPK application** that gives a **CrystalDiskInfo-like experience** on a NAS.

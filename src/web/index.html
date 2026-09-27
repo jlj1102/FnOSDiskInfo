@@ -17,11 +17,24 @@
     </div>
     <table class="meta"><tbody id="meta"></tbody></table>
   </div>
+  <div class="banner hidden" id="banner">
+    <span id="bannerText"></span>
+    <button id="bannerClose" type="button">×</button>
+  </div>
   <div class="toolbar">
     <button id="rescan" type="button"></button>
-    <span id="status" class="status"></span>
+    <button id="btnSelftest" type="button"></button>
+    <button id="btnAamapm" type="button"></button>
+    <button id="btnAlarms" type="button">
+      <span id="alarmDot" class="dot hidden"></span><span id="btnAlarmsLabel"></span>
+    </button>
+    <button id="btnGraph" type="button"></button>
+    <button id="btnReport" type="button"></button>
+    <button id="btnRaw" type="button"></button>
     <span class="spacer"></span>
     <select id="theme"></select>
+    <select id="lang"></select>
+    <button id="btnSettings" type="button"></button>
   </div>
   <div class="attrwrap">
     <table class="attrs">
@@ -29,8 +42,69 @@
       <tbody id="attrs"></tbody>
     </table>
   </div>
+  <div class="statusline"><span id="status" class="status"></span></div>
 </div>
+
+<dialog id="dlgSelftest">
+  <h3 id="stTitle"></h3>
+  <div class="dlg-sub" id="stLast"></div>
+  <div class="dlg-row">
+    <select id="stType"></select>
+    <button id="stStart" type="button"></button>
+    <button id="stAbort" type="button"></button>
+  </div>
+  <pre class="out" id="stOut"></pre>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
+<dialog id="dlgAamApm">
+  <h3 id="aaTitle"></h3>
+  <div class="dlg-sub" id="aaCurrent"></div>
+  <div class="dlg-row">
+    <label>AAM</label>
+    <input id="aaAam" type="number" min="1" max="254">
+    <button id="aaAamSet" type="button"></button>
+    <button id="aaAamOff" type="button"></button>
+  </div>
+  <div class="dlg-row">
+    <label>APM</label>
+    <input id="aaApm" type="number" min="1" max="254">
+    <button id="aaApmSet" type="button"></button>
+    <button id="aaApmOff" type="button"></button>
+  </div>
+  <pre class="out" id="aaOut"></pre>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
+<dialog id="dlgGraph" class="wide">
+  <h3 id="grTitle"></h3>
+  <div class="dlg-row">
+    <select id="grMetric"></select>
+    <select id="grPoints"></select>
+    <button id="grDraw" type="button"></button>
+  </div>
+  <div id="grDisks" class="checks"></div>
+  <div class="graphwrap"><canvas id="grCanvas"></canvas></div>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
+<dialog id="dlgSettings" class="wide">
+  <h3 id="seTitle"></h3>
+  <div id="seBody"></div>
+  <div class="dlg-actions">
+    <button id="seSave" type="button"></button>
+    <button class="close" type="button"></button>
+  </div>
+</dialog>
+
+<dialog id="dlgAlarms" class="wide">
+  <h3 id="alTitle"></h3>
+  <div id="alBody"></div>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
 <script src="i18n.js"></script>
+<script src="graph.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
