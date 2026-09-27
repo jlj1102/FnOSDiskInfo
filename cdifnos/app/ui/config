@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "cdifnos.main": {
+            "title": "DiskInfo",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "port": "7817",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

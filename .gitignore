@@ -1,0 +1,10 @@
+# build artifacts
+tools/
+*.fpk
+cdi-dev.exe
+*.log
+cdifnos/app/server/cdi-server
+
+# OS
+.DS_Store
+Thumbs.db

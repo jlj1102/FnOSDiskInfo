@@ -1,0 +1,68 @@
+{
+  "json_format_version": [1, 0],
+  "smartctl": {
+    "version": [7, 3],
+    "exit_status": 0,
+    "messages": []
+  },
+  "device": {
+    "name": "/dev/sda",
+    "info_name": "/dev/sda [SAT]",
+    "type": "sat",
+    "protocol": "ATA",
+    "model_name": "ST3000DM008-2DM166",
+    "serial_number": "Z9A1B2C3",
+    "firmware_version": "CC26",
+    "rotation_rate": 7200
+  },
+  "model_name": "ST3000DM008-2DM166",
+  "serial_number": "Z9A1B2C3",
+  "firmware_version": "CC26",
+  "user_capacity": {
+    "blocks": 5860533168,
+    "bytes": 3000592982016
+  },
+  "smart_status": {
+    "passed": true
+  },
+  "temperature": {
+    "current": 31
+  },
+  "power_on_time": {
+    "hours": 18234
+  },
+  "wwn": {
+    "na": 0,
+    "oui": 3152,
+    "id": 1612316823
+  },
+  "ata_smart_attributes": {
+    "revision": 16,
+    "table": [
+      {
+        "id": 5,
+        "name": "Reallocated_Sector_Ct",
+        "value": 100,
+        "worst": 100,
+        "thresh": 10,
+        "when_failed": "",
+        "raw": {
+          "value": 0,
+          "string": "0"
+        }
+      },
+      {
+        "id": 9,
+        "name": "Power_On_Hours",
+        "value": 80,
+        "worst": 80,
+        "thresh": 0,
+        "when_failed": "",
+        "raw": {
+          "value": 18234,
+          "string": "18234"
+        }
+      }
+    ]
+  }
+}

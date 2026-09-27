@@ -1,0 +1,8 @@
+#!/bin/bash
+
+### Runs after upgrade: target/ was replaced, re-apply exec bit and log uid.
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+echo "upgrade_callback uid=$(id -u)" >> "${LOG_FILE}" 2>/dev/null
+chmod +x "${TRIM_APPDEST}/server/cdi-server" 2>/dev/null
+exit 0

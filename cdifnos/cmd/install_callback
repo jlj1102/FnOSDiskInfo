@@ -1,0 +1,8 @@
+#!/bin/bash
+
+### Runs after install. Root mode needs no capability setup; keep exec bit and log uid.
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+echo "install_callback uid=$(id -u)" >> "${LOG_FILE}" 2>/dev/null
+chmod +x "${TRIM_APPDEST}/server/cdi-server" 2>/dev/null
+exit 0
