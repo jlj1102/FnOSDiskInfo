@@ -8,41 +8,38 @@
 </head>
 <body>
 <div class="cdi">
-  <div class="tabs" id="tabs"></div>
-  <div class="headline" id="headline"></div>
-  <div class="panel">
+  <div class="menubar" id="menubar"></div>
+  <div class="diskbar">
+    <button id="preDisk" class="pager hidden" type="button">&#9664;</button>
+    <div class="tabs" id="tabs"></div>
+    <button id="nextDisk" class="pager hidden" type="button">&#9654;</button>
+  </div>
+  <div class="workarea">
     <div class="left">
       <div class="box health unknown" id="health">—</div>
       <div class="box temp" id="temp">—</div>
+      <div class="box life" id="life">—</div>
     </div>
-    <table class="meta"><tbody id="meta"></tbody></table>
+    <div class="right">
+      <div class="headline" id="headline"></div>
+      <table class="meta"><tbody id="meta"></tbody></table>
+    </div>
   </div>
   <div class="banner hidden" id="banner">
     <span id="bannerText"></span>
     <button id="bannerClose" type="button">×</button>
   </div>
-  <div class="toolbar">
-    <button id="rescan" type="button"></button>
-    <button id="btnSelftest" type="button"></button>
-    <button id="btnAamapm" type="button"></button>
-    <button id="btnAlarms" type="button">
-      <span id="alarmDot" class="dot hidden"></span><span id="btnAlarmsLabel"></span>
-    </button>
-    <button id="btnGraph" type="button"></button>
-    <button id="btnReport" type="button"></button>
-    <button id="btnRaw" type="button"></button>
-    <span class="spacer"></span>
-    <select id="theme"></select>
-    <select id="lang"></select>
-    <button id="btnSettings" type="button"></button>
+  <div class="statusline">
+    <span id="status" class="status"></span>
+    <span id="toast" class="toast"></span>
+    <span id="alarmIndicator" class="alarm-ind hidden">&#9888;</span>
   </div>
-  <div class="attrwrap">
+  <div class="attrwrap" id="attrwrap">
     <table class="attrs">
       <thead><tr id="attrhead"></tr></thead>
       <tbody id="attrs"></tbody>
     </table>
   </div>
-  <div class="statusline"><span id="status" class="status"></span></div>
 </div>
 
 <dialog id="dlgSelftest">
@@ -103,8 +100,18 @@
   <div class="dlg-actions"><button class="close" type="button"></button></div>
 </dialog>
 
+<dialog id="dlgAbout">
+  <h3 id="abTitle"></h3>
+  <div class="about-body" id="abText"></div>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
+<input id="themeFile" type="file" accept=".zip" hidden>
+
 <script src="i18n.js"></script>
 <script src="graph.js"></script>
+<script src="menubar.js"></script>
+<script src="theme.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -2,8 +2,11 @@
 
 const $ = (id) => document.getElementById(id);
 
-const THEMES = ["classic", "dark", "follow"];
-const LANGS = [["en", "English"], ["zh-CN", "简体中文"], ["zh-TW", "繁體中文"], ["ja", "日本語"]];
+const PAGE_SIZE = 12;
+const INTERVALS = [10, 60, 180, 300, 600, 1800, 3600];
+const RAW_FORMATS = ["hex", "dec", "byte2", "byte1"];
+const ZOOMS = ["100", "125", "150", "200", "250", "300", "auto"];
+const FONT_SIZES = ["11", "12", "13", "14"];
 const METRICS = ["temperature", "life", "power_on_hours", "power_on_count", "reallocated",
   "realloc_events", "pending", "uncorrectable", "host_reads", "host_writes"];
 
@@ -13,12 +16,20 @@ const state = {
   attrs: [],
   updatedAt: null,
   error: null,
+  version: null,
+  page: 0,
   settings: null,
   alarms: [],
   ui: {
     unit: localStorage.getItem("cdifnos.unit") || "C",
     raw: localStorage.getItem("cdifnos.raw") || "hex",
-    hideSerial: localStorage.getItem("cdifnos.hideSerial") === "1"
+    hideSerial: localStorage.getItem("cdifnos.hideSerial") === "1",
+    hideSmart: localStorage.getItem("cdifnos.hideSmart") === "1",
+    hideNoSmart: localStorage.getItem("cdifnos.hideNoSmart") === "1",
+    sort: localStorage.getItem("cdifnos.sort") || "device",
+    zoom: localStorage.getItem("cdifnos.zoom") || "100",
+    fontFamily: localStorage.getItem("cdifnos.fontFamily") || "",
+    fontSize: localStorage.getItem("cdifnos.fontSize") || "12"
   }
 };
 
@@ -31,6 +42,16 @@ async function api(path, opts) {
 
 function currentDisk() {
   return state.disks.find((d) => d.id === state.id) || null;
+}
+
+function visibleDisks() {
+  const list = state.disks.filter((d) => !(state.ui.hideNoSmart && (d.error || d.health === "unknown")));
+  const s = state.ui.sort;
+  return [...list].sort((a, b) => {
+    if (s === "model") return (a.model || "").localeCompare(b.model || "");
+    if (s === "serial") return (a.serial || "").localeCompare(b.serial || "");
+    return (a.device || "").localeCompare(b.device || "");
+  });
 }
 
 function fmtCapacity(bytes) {
@@ -63,6 +84,16 @@ function fmtNum(n) {
   return n == null ? "—" : Number(n).toLocaleString();
 }
 
+let toastTimer = null;
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.textContent = "";
+  }, 3500);
+}
+
 async function runRequest(path, body) {
   const r = await api(path, {
     method: "POST",
@@ -85,77 +116,127 @@ async function runRequest(path, body) {
 // ---------- rendering ----------
 
 function renderTabs() {
+  const list = visibleDisks();
+  const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  state.page = Math.min(Math.max(0, state.page), pages - 1);
+  const slice = list.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE);
+
   const box = $("tabs");
   box.textContent = "";
-  for (const d of state.disks) {
+  for (const d of slice) {
     const cls = d.error ? "unknown" : healthClass(d.health);
     const b = document.createElement("button");
     b.type = "button";
     b.className = "tab " + cls + (d.id === state.id ? " active" : "");
+    const icon = document.createElement("span");
+    icon.className = "ticon";
+    const src = Theme.images["status_" + cls];
+    if (src) {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "";
+      icon.textContent = "";
+      icon.append(img);
+    }
     const st = document.createElement("span");
     st.className = "st";
     st.textContent = d.error ? t("unknown") : t(cls);
     const tm = document.createElement("span");
     tm.className = "tm";
     tm.textContent = fmtTemp(d.temperature);
-    b.append(st, tm);
-    b.addEventListener("click", () => {
-      state.id = d.id;
-      localStorage.setItem("cdifnos.id", d.id);
-      refresh();
-    });
+    b.append(icon, st, tm);
+    b.addEventListener("click", () => selectDisk(d.id));
     box.append(b);
   }
+
+  const showPager = list.length > PAGE_SIZE;
+  $("preDisk").classList.toggle("hidden", !showPager);
+  $("nextDisk").classList.toggle("hidden", !showPager);
 }
 
-function metaRow(label, value, cls) {
+function selectDisk(id) {
+  state.id = id;
+  state.page = Math.floor(Math.max(0, visibleDisks().findIndex((d) => d.id === id)) / PAGE_SIZE);
+  localStorage.setItem("cdifnos.id", id);
+  refresh();
+}
+
+function metaRow(c1, v1, c2, v2) {
   const tr = document.createElement("tr");
-  const th = document.createElement("th");
-  th.textContent = label;
-  const td = document.createElement("td");
-  td.textContent = value;
-  if (cls) td.className = cls;
-  tr.append(th, td);
+  for (const [label, value] of [[c1, v1], [c2, v2]]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    const td = document.createElement("td");
+    td.textContent = value;
+    tr.append(th, td);
+  }
   return tr;
+}
+
+function setBoxImage(el, slot, text, cls) {
+  el.textContent = "";
+  el.title = text;
+  el.className = "box " + cls;
+  const src = Theme.images[slot];
+  if (src) {
+    const img = document.createElement("img");
+    img.className = "sicon";
+    img.src = src;
+    img.alt = text;
+    el.append(img);
+  } else {
+    el.textContent = text;
+  }
 }
 
 function renderHead() {
   const meta = $("meta");
-  const health = $("health");
-  const temp = $("temp");
   meta.textContent = "";
   const d = currentDisk();
   if (!d) {
     $("headline").textContent = state.error ? state.error : t("no_disks");
-    health.textContent = "—";
-    health.className = "box health unknown";
-    temp.textContent = "—";
+    setBoxImage($("health"), "", "—", "health unknown");
+    setBoxImage($("temp"), "", "—", "temp");
+    $("life").textContent = "—";
     return;
   }
-  $("headline").textContent = (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes);
   const cls = healthClass(d.health);
-  health.textContent = t(cls) + (d.life != null ? " " + d.life + "%" : "");
-  health.className = "box health " + cls;
-  temp.textContent = fmtTemp(d.temperature);
+  $("headline").textContent = (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes);
+  setBoxImage($("health"), "status_" + cls, t(cls), "health " + cls);
+  const tempCls = d.temperature == null ? "unknown" : (d.temperature >= (d.alarm_temp || 99) ? "bad" : "good");
+  setBoxImage($("temp"), "temp_" + tempCls, fmtTemp(d.temperature), "temp");
+  $("life").textContent = d.life == null ? "—" : t("life") + " " + d.life + " %";
 
   const serial = d.serial ? (state.ui.hideSerial ? "********" : d.serial) : "—";
+  const rot = d.rotation_rate ? d.rotation_rate + " " + t("rpm") : t("ssd");
+  const hours = d.power_on_hours == null ? "—" : fmtNum(d.power_on_hours) + " " + t("hours");
   meta.append(
-    metaRow(t("firmware"), d.firmware || "—"),
-    metaRow(t("serial"), serial),
-    metaRow(t("interface"), d.protocol || "—"),
-    metaRow(t("power_on"), d.power_on_hours == null ? "—" : fmtNum(d.power_on_hours) + " " + t("hours")),
-    metaRow(t("power_on_count"), d.power_on_count == null ? "—" : fmtNum(d.power_on_count)),
-    metaRow(t("rotation"), d.rotation_rate ? d.rotation_rate + " " + t("rpm") : t("ssd")),
-    metaRow(t("device"), d.device)
+    metaRow(t("firmware"), d.firmware || "—", t("rotation"), rot),
+    metaRow(t("serial"), serial, t("power_on_count"), fmtNum(d.power_on_count)),
+    metaRow(t("interface"), d.protocol || "—", t("power_on"), hours),
+    metaRow(t("device"), d.device, t("last_test"), d.self_test ? d.self_test.type + ": " + d.self_test.status : "—")
   );
-  if (d.self_test) {
-    meta.append(metaRow(t("last_test"), d.self_test.type + ": " + d.self_test.status));
-  }
   if (d.status_reasons && d.status_reasons.length) {
-    meta.append(metaRow(t("status_reasons"), d.status_reasons.join("; "), "reasons"));
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = t("status_reasons");
+    const td = document.createElement("td");
+    td.className = "reasons";
+    td.colSpan = 3;
+    td.textContent = d.status_reasons.join("; ");
+    tr.append(th, td);
+    meta.append(tr);
   }
   if (d.error) {
-    meta.append(metaRow(t("smart"), d.error, "reasons"));
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = t("smart");
+    const td = document.createElement("td");
+    td.className = "reasons";
+    td.colSpan = 3;
+    td.textContent = d.error;
+    tr.append(th, td);
+    meta.append(tr);
   }
 }
 
@@ -172,6 +253,7 @@ function renderAttrHead() {
 }
 
 function renderAttrs() {
+  $("attrwrap").classList.toggle("hidden", state.ui.hideSmart);
   const tb = $("attrs");
   tb.textContent = "";
   if (!state.attrs.length) {
@@ -220,22 +302,18 @@ function updateBanner() {
   const last = state.alarms[state.alarms.length - 1];
   const seen = Number(localStorage.getItem("cdifnos.alarmSeen") || 0);
   const banner = $("banner");
-  const dot = $("alarmDot");
-  if (last && last.t * 1000 > seen && last.to !== "good") {
+  const ind = $("alarmIndicator");
+  const unseen = last && last.t * 1000 > seen;
+  if (unseen && last.to !== "good") {
     banner.classList.remove("hidden");
     $("bannerText").textContent = new Date(last.t * 1000).toLocaleString() + " — " + last.message;
-    dot.classList.remove("hidden");
   } else {
     banner.classList.add("hidden");
-    if (last && last.t * 1000 > seen) {
-      dot.classList.remove("hidden");
-    } else {
-      dot.classList.add("hidden");
-    }
   }
+  ind.classList.toggle("hidden", !unseen || last.to === "good");
 }
 
-// ---------- data refresh ----------
+// ---------- refresh ----------
 
 async function refresh() {
   try {
@@ -243,11 +321,10 @@ async function refresh() {
     state.disks = data.disks || [];
     state.updatedAt = data.updated_at;
     state.error = data.error || null;
-    if (state.id && !state.disks.some((d) => d.id === state.id)) {
-      state.id = state.disks.length ? state.disks[0].id : null;
-    }
-    if (!state.id && state.disks.length) {
-      state.id = state.disks[0].id;
+    state.version = data.version || state.version;
+    const list = visibleDisks();
+    if (!list.some((d) => d.id === state.id)) {
+      state.id = list.length ? list[0].id : null;
     }
     renderTabs();
     renderHead();
@@ -268,6 +345,7 @@ async function refresh() {
     renderHead();
     renderStatus();
   }
+  Menubar.refresh();
 }
 
 async function loadAlarms() {
@@ -277,6 +355,304 @@ async function loadAlarms() {
     state.alarms = [];
   }
   updateBanner();
+}
+
+async function loadSettings() {
+  try {
+    state.settings = await api("/api/settings");
+  } catch (e) {
+    state.settings = null;
+  }
+}
+
+// ---------- display preferences ----------
+
+function applyZoom() {
+  let factor = 1;
+  if (state.ui.zoom === "auto") {
+    factor = (window.devicePixelRatio || 1) >= 1.5 ? 1.25 : 1;
+  } else {
+    factor = Number(state.ui.zoom) / 100 || 1;
+  }
+  document.body.style.zoom = factor;
+}
+
+function applyFont() {
+  const el = document.documentElement;
+  if (state.ui.fontFamily) {
+    el.style.setProperty("--cdi-font-family", state.ui.fontFamily);
+  } else {
+    el.style.removeProperty("--cdi-font-family");
+  }
+  el.style.setProperty("--cdi-font-size", state.ui.fontSize + "px");
+}
+
+function setZoom(z) {
+  state.ui.zoom = z;
+  localStorage.setItem("cdifnos.zoom", z);
+  applyZoom();
+}
+
+function setFont(family, size) {
+  if (family !== null) {
+    state.ui.fontFamily = family;
+    localStorage.setItem("cdifnos.fontFamily", family);
+  }
+  if (size !== null) {
+    state.ui.fontSize = size;
+    localStorage.setItem("cdifnos.fontSize", size);
+  }
+  applyFont();
+}
+
+function togglePref(key, render) {
+  state.ui[key] = !state.ui[key];
+  localStorage.setItem("cdifnos." + key, state.ui[key] ? "1" : "0");
+  render();
+  Menubar.refresh();
+}
+
+// ---------- actions ----------
+
+function rescanNow() {
+  api("/api/disks/rescan", { method: "POST" }).catch(() => {});
+  setTimeout(refresh, 800);
+}
+
+function downloadReport() {
+  const d = currentDisk();
+  if (d) {
+    location.href = "/api/disks/" + encodeURIComponent(d.id) + "/report.txt";
+  }
+}
+
+async function copyInfo() {
+  const d = currentDisk();
+  if (!d) return;
+  try {
+    const text = await (await fetch("/api/disks/" + encodeURIComponent(d.id) + "/report.txt")).text();
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.append(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    toast(t("copy_ok"));
+  } catch (e) {
+    toast(t("copy_fail"));
+  }
+}
+
+async function setIntervalSec(sec) {
+  if (!state.settings) {
+    await loadSettings();
+  }
+  if (!state.settings) return;
+  try {
+    await api("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        interval_seconds: sec,
+        default: state.settings.default,
+        disks: state.settings.disks || {}
+      })
+    });
+    await loadSettings();
+    toast(t("saved"));
+  } catch (e) {
+    toast(e.message);
+  }
+  Menubar.refresh();
+}
+
+async function importThemeFile(file) {
+  try {
+    const info = await Theme.importFile(file);
+    await Theme.apply(info.id);
+    toast(t("theme_import_ok"));
+  } catch (e) {
+    toast(t("theme_import_fail") + ": " + e.message);
+  }
+  buildMenus();
+  refresh();
+}
+
+async function deleteTheme() {
+  const id = Theme.current();
+  if (!confirm(t("theme_delete_confirm"))) {
+    return;
+  }
+  try {
+    await Theme.remove(id);
+    await Theme.apply("classic");
+  } catch (e) {
+    toast(t("theme_import_fail") + ": " + e.message);
+  }
+  buildMenus();
+  refresh();
+}
+
+function openAbout() {
+  $("abTitle").textContent = t("about");
+  const box = $("abText");
+  box.textContent = "";
+  const p1 = document.createElement("p");
+  p1.textContent = "DiskInfo for fnOS " + (state.version || "");
+  const p2 = document.createElement("p");
+  p2.textContent = t("about_text");
+  const p3 = document.createElement("p");
+  p3.innerHTML = '<a href="https://crystalmark.info/en/software/crystaldiskinfo/" target="_blank" rel="noopener">CrystalDiskInfo</a> · ' +
+    '<a href="https://www.smartmontools.org/" target="_blank" rel="noopener">smartmontools</a> · ' +
+    '<a href="https://en.wikipedia.org/wiki/S.M.A.R.T." target="_blank" rel="noopener">S.M.A.R.T.</a>';
+  box.append(p1, p2, p3);
+  $("dlgAbout").showModal();
+}
+
+// ---------- menus ----------
+
+function buildMenus() {
+  const themeItems = Theme.list.map((ti) => ({
+    label: ti.name,
+    checked: Theme.current() === ti.id,
+    action: async () => {
+      await Theme.apply(ti.id);
+      refresh();
+    }
+  }));
+  const currentTheme = Theme.current();
+  const isImported = !["classic", "dark", "follow"].includes(currentTheme);
+
+  const menus = [
+    {
+      label: t("menu_file"),
+      items: [
+        { label: t("save_text"), action: downloadReport }
+      ]
+    },
+    {
+      label: t("menu_edit"),
+      items: [
+        { label: t("copy"), action: copyInfo }
+      ]
+    },
+    {
+      label: t("menu_function"),
+      items: [
+        { label: t("refresh") + " (F5)", action: () => refresh() },
+        {
+          label: t("auto_refresh"),
+          items: INTERVALS.map((sec) => ({
+            label: sec >= 60 ? sec / 60 + " min" : sec + " s",
+            checked: state.settings ? state.settings.interval_seconds === sec : sec === 10,
+            action: () => setIntervalSec(sec)
+          }))
+        },
+        { label: t("rescan") + " (F6)", action: rescanNow },
+        { separator: true },
+        { label: t("graph"), action: openGraph },
+        { separator: true },
+        { label: t("hide_serial_number"), checked: state.ui.hideSerial, action: () => togglePref("hideSerial", renderHead) },
+        {
+          label: t("alerts"),
+          items: [{ label: t("alarm_list"), action: openAlarms }]
+        },
+        {
+          label: t("advanced"),
+          items: [
+            { label: t("aam_apm"), action: openAamApm },
+            { label: t("health_status_setting"), action: openSettings },
+            { label: t("temperature_setting"), action: openSettings },
+            {
+              label: t("temp_unit"),
+              items: [
+                { label: t("celsius"), checked: state.ui.unit === "C", action: () => { state.ui.unit = "C"; localStorage.setItem("cdifnos.unit", "C"); refresh(); } },
+                { label: t("fahrenheit"), checked: state.ui.unit === "F", action: () => { state.ui.unit = "F"; localStorage.setItem("cdifnos.unit", "F"); refresh(); } }
+              ]
+            },
+            {
+              label: t("raw_values"),
+              items: RAW_FORMATS.map((r) => ({
+                label: t(r),
+                checked: state.ui.raw === r,
+                action: () => {
+                  state.ui.raw = r;
+                  localStorage.setItem("cdifnos.raw", r);
+                  renderAttrs();
+                }
+              }))
+            },
+            { label: t("hide_smart"), checked: state.ui.hideSmart, action: () => togglePref("hideSmart", renderAttrs) },
+            { label: t("hide_no_smart"), checked: state.ui.hideNoSmart, action: () => togglePref("hideNoSmart", () => refresh()) },
+            {
+              label: t("disk_sort"),
+              items: [
+                { label: t("sort_device"), checked: state.ui.sort === "device", action: () => { state.ui.sort = "device"; localStorage.setItem("cdifnos.sort", "device"); refresh(); } },
+                { label: t("sort_model"), checked: state.ui.sort === "model", action: () => { state.ui.sort = "model"; localStorage.setItem("cdifnos.sort", "model"); refresh(); } },
+                { label: t("sort_serial"), checked: state.ui.sort === "serial", action: () => { state.ui.sort = "serial"; localStorage.setItem("cdifnos.sort", "serial"); refresh(); } }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      label: t("menu_theme"),
+      items: [
+        ...themeItems,
+        { separator: true },
+        {
+          label: t("zoom"),
+          items: ZOOMS.map((z) => ({
+            label: z === "auto" ? t("zoom_auto") : z + "%",
+            checked: state.ui.zoom === z,
+            action: () => setZoom(z)
+          }))
+        },
+        {
+          label: t("font_setting"),
+          items: [
+            { label: t("font_default"), checked: !state.ui.fontFamily, action: () => setFont("", null) },
+            { label: "Microsoft YaHei", checked: state.ui.fontFamily === "Microsoft YaHei", action: () => setFont("Microsoft YaHei", null) },
+            { label: "Segoe UI", checked: state.ui.fontFamily === "Segoe UI", action: () => setFont("Segoe UI", null) },
+            { label: "Consolas", checked: state.ui.fontFamily === "Consolas", action: () => setFont("Consolas", null) },
+            { separator: true },
+            ...FONT_SIZES.map((s) => ({
+              label: t("font_size") + " " + s,
+              checked: state.ui.fontSize === s,
+              action: () => setFont(null, s)
+            }))
+          ]
+        },
+        { separator: true },
+        { label: t("theme_import"), action: () => $("themeFile").click() },
+        ...(isImported ? [{ label: t("theme_delete"), action: deleteTheme }] : [])
+      ]
+    },
+    {
+      label: t("menu_disk"),
+      items: visibleDisks().map((d) => ({
+        label: d.model || d.device,
+        checked: d.id === state.id,
+        action: () => selectDisk(d.id)
+      }))
+    },
+    {
+      label: t("menu_help"),
+      items: [
+        { label: t("about_smart"), action: () => window.open("https://en.wikipedia.org/wiki/S.M.A.R.T.", "_blank", "noopener") },
+        { separator: true },
+        { label: t("about"), action: openAbout }
+      ]
+    }
+  ];
+  Menubar.render($("menubar"), menus);
 }
 
 // ---------- dialogs: self-test ----------
@@ -296,10 +672,14 @@ async function selftestAction(action) {
   const d = currentDisk();
   if (!d) return;
   $("stOut").textContent = "...";
-  const url = "/api/disks/" + encodeURIComponent(d.id) + "/" + action;
-  const body = action === "self-test" ? { type: $("stType").value } : {};
-  const res = await runRequest(url, body);
-  $("stOut").textContent = res.output || res.error || JSON.stringify(res);
+  try {
+    const url = "/api/disks/" + encodeURIComponent(d.id) + "/" + action;
+    const body = action === "self-test" ? { type: $("stType").value } : {};
+    const res = await runRequest(url, body);
+    $("stOut").textContent = res.output || res.error || JSON.stringify(res);
+  } catch (e) {
+    $("stOut").textContent = e.message;
+  }
   refresh();
 }
 
@@ -309,7 +689,11 @@ function openAamApm() {
   const d = currentDisk();
   if (!d) return;
   $("aaTitle").textContent = t("aam_apm") + " — " + (d.model || d.device);
-  $("aaCurrent").textContent = t("current") + ": AAM " + (d.aam ?? "—") + " / APM " + (d.apm ?? "—");
+  let cur = t("current") + ": AAM " + (d.aam ?? "—") + " / APM " + (d.apm ?? "—");
+  if (d.aam == null && d.apm == null && !d.nvme) {
+    cur += "\n" + t("aam_apm_unsupported");
+  }
+  $("aaCurrent").textContent = cur;
   $("aaAam").value = d.aam ?? "";
   $("aaApm").value = d.apm ?? "";
   $("aaOut").textContent = "";
@@ -319,9 +703,17 @@ function openAamApm() {
 async function aamApmAction(kind, value) {
   const d = currentDisk();
   if (!d) return;
+  if (!/^(off|[1-9][0-9]{0,2})$/.test(value)) {
+    $("aaOut").textContent = t("value_required");
+    return;
+  }
   $("aaOut").textContent = "...";
-  const res = await runRequest("/api/disks/" + encodeURIComponent(d.id) + "/aam-apm", { kind, value });
-  $("aaOut").textContent = res.output || res.error || JSON.stringify(res);
+  try {
+    const res = await runRequest("/api/disks/" + encodeURIComponent(d.id) + "/aam-apm", { kind, value });
+    $("aaOut").textContent = res.output || res.error || JSON.stringify(res);
+  } catch (e) {
+    $("aaOut").textContent = e.message;
+  }
   refresh();
 }
 
@@ -336,7 +728,7 @@ function openGraph() {
 function buildGraphDisks() {
   const box = $("grDisks");
   box.textContent = "";
-  for (const d of state.disks) {
+  for (const d of visibleDisks()) {
     const label = document.createElement("label");
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -442,7 +834,6 @@ function openSettings() {
   const tbl = document.createElement("table");
   const intervalRow = settingsNumber(t("interval_seconds"), s.interval_seconds, 2, 3600, "se-interval");
   tbl.append(intervalRow.tr);
-  const def = s.built_in_defaults || {};
   const cur = s.default || {};
   const dTemp = settingsNumber(t("alarm_temp"), cur.alarm_temp, 1, 100, "se-def-alarm_temp");
   const d05 = settingsNumber(t("threshold_05"), cur.threshold_05, 0, 100000, "se-def-threshold_05");
@@ -491,54 +882,6 @@ function openSettings() {
     secServer.append(pt);
   }
   wrap.append(secServer);
-
-  const secClient = document.createElement("section");
-  const h4c = document.createElement("h4");
-  h4c.textContent = t("client");
-  secClient.append(h4c);
-
-  const rowUnit = document.createElement("div");
-  rowUnit.className = "client-row";
-  const lUnit = document.createElement("label");
-  lUnit.textContent = t("unit");
-  const selUnit = document.createElement("select");
-  selUnit.id = "seUnit";
-  for (const [v, label] of [["C", t("celsius")], ["F", t("fahrenheit")]]) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = label;
-    selUnit.append(o);
-  }
-  selUnit.value = state.ui.unit;
-  rowUnit.append(lUnit, selUnit);
-
-  const rowRaw = document.createElement("div");
-  rowRaw.className = "client-row";
-  const lRaw = document.createElement("label");
-  lRaw.textContent = t("raw_format");
-  const selRaw = document.createElement("select");
-  selRaw.id = "seRaw";
-  for (const v of ["hex", "dec", "byte2", "byte1"]) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = t(v);
-    selRaw.append(o);
-  }
-  selRaw.value = state.ui.raw;
-  rowRaw.append(lRaw, selRaw);
-
-  const rowHide = document.createElement("div");
-  rowHide.className = "client-row";
-  const lHide = document.createElement("label");
-  lHide.textContent = t("hide_serial");
-  const cbHide = document.createElement("input");
-  cbHide.type = "checkbox";
-  cbHide.id = "seHide";
-  cbHide.checked = state.ui.hideSerial;
-  rowHide.append(lHide, cbHide);
-
-  secClient.append(rowUnit, rowRaw, rowHide);
-  wrap.append(secClient);
   body.append(wrap);
   $("dlgSettings").showModal();
 }
@@ -566,12 +909,6 @@ async function saveSettings() {
     }
     if (any) s.disks[tr.dataset.id] = ov;
   }
-  state.ui.unit = $("seUnit").value;
-  state.ui.raw = $("seRaw").value;
-  state.ui.hideSerial = $("seHide").checked;
-  localStorage.setItem("cdifnos.unit", state.ui.unit);
-  localStorage.setItem("cdifnos.raw", state.ui.raw);
-  localStorage.setItem("cdifnos.hideSerial", state.ui.hideSerial ? "1" : "0");
   try {
     await api("/api/settings", {
       method: "PUT",
@@ -583,28 +920,13 @@ async function saveSettings() {
   }
   await loadSettings();
   $("dlgSettings").close();
+  toast(t("saved"));
   refresh();
-}
-
-async function loadSettings() {
-  try {
-    state.settings = await api("/api/settings");
-  } catch (e) {
-    state.settings = null;
-  }
 }
 
 // ---------- init ----------
 
 function applyStaticTexts() {
-  $("rescan").textContent = t("rescan");
-  $("btnSelftest").textContent = t("selftest");
-  $("btnAamapm").textContent = t("aam_apm");
-  $("btnAlarmsLabel").textContent = t("alarms");
-  $("btnGraph").textContent = t("graph");
-  $("btnReport").textContent = t("report");
-  $("btnRaw").textContent = t("raw_json");
-  $("btnSettings").textContent = t("settings");
   $("stTitle").textContent = t("selftest");
   $("stStart").textContent = t("start");
   $("stAbort").textContent = t("abort");
@@ -618,6 +940,7 @@ function applyStaticTexts() {
   $("seTitle").textContent = t("settings");
   $("seSave").textContent = t("apply");
   $("alTitle").textContent = t("alarms");
+  $("abTitle").textContent = t("about");
   for (const b of document.querySelectorAll(".close")) {
     b.textContent = t("close");
     b.onclick = () => b.closest("dialog").close();
@@ -625,35 +948,6 @@ function applyStaticTexts() {
 }
 
 function initControls() {
-  const themeSel = $("theme");
-  for (const v of THEMES) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = t("theme_" + v);
-    themeSel.append(o);
-  }
-  const savedTheme = localStorage.getItem("cdifnos.theme") || "classic";
-  themeSel.value = savedTheme;
-  document.documentElement.dataset.theme = savedTheme;
-  themeSel.onchange = () => {
-    document.documentElement.dataset.theme = themeSel.value;
-    localStorage.setItem("cdifnos.theme", themeSel.value);
-  };
-
-  const langSel = $("lang");
-  const savedLang = localStorage.getItem("cdifnos.lang") || LANG;
-  for (const [v, label] of LANGS) {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = label;
-    langSel.append(o);
-  }
-  langSel.value = savedLang;
-  langSel.onchange = () => {
-    localStorage.setItem("cdifnos.lang", langSel.value);
-    location.reload();
-  };
-
   const stType = $("stType");
   for (const v of ["short", "long", "conveyance"]) {
     const o = document.createElement("option");
@@ -678,53 +972,58 @@ function initControls() {
   }
   grPoints.value = "500";
 
-  $("rescan").onclick = async () => {
-    try {
-      await api("/api/disks/rescan", { method: "POST" });
-    } catch (e) {
-      // next poll surfaces errors
-    }
-    setTimeout(refresh, 800);
+  $("preDisk").onclick = () => {
+    state.page--;
+    renderTabs();
   };
-  $("btnSelftest").onclick = openSelftest;
+  $("nextDisk").onclick = () => {
+    state.page++;
+    renderTabs();
+  };
   $("stStart").onclick = () => selftestAction("self-test");
   $("stAbort").onclick = () => selftestAction("abort-test");
-
-  $("btnAamapm").onclick = openAamApm;
   $("aaAamSet").onclick = () => aamApmAction("aam", $("aaAam").value.trim());
   $("aaAamOff").onclick = () => aamApmAction("aam", "off");
   $("aaApmSet").onclick = () => aamApmAction("apm", $("aaApm").value.trim());
   $("aaApmOff").onclick = () => aamApmAction("apm", "off");
-
-  $("btnAlarms").onclick = openAlarms;
-  $("btnGraph").onclick = openGraph;
   $("grDraw").onclick = drawGraphNow;
-  window.addEventListener("resize", () => {
-    if ($("dlgGraph").open) drawGraphNow();
-  });
-  $("btnReport").onclick = () => {
-    const d = currentDisk();
-    if (d) location.href = "/api/disks/" + encodeURIComponent(d.id) + "/report.txt";
-  };
-  $("btnRaw").onclick = () => {
-    const d = currentDisk();
-    if (d) location.href = "/api/disks/" + encodeURIComponent(d.id) + "/raw";
-  };
-  $("btnSettings").onclick = openSettings;
   $("seSave").onclick = saveSettings;
   $("bannerClose").onclick = () => {
     const last = state.alarms[state.alarms.length - 1];
     if (last) localStorage.setItem("cdifnos.alarmSeen", last.t * 1000);
     updateBanner();
   };
+  $("alarmIndicator").onclick = openAlarms;
+  $("themeFile").addEventListener("change", () => {
+    const f = $("themeFile").files[0];
+    $("themeFile").value = "";
+    if (f) importThemeFile(f);
+  });
+  window.addEventListener("resize", () => {
+    if ($("dlgGraph").open) drawGraphNow();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "F5") {
+      e.preventDefault();
+      refresh();
+    } else if (e.key === "F6") {
+      e.preventDefault();
+      rescanNow();
+    }
+  });
 }
 
-function init() {
+async function init() {
   setLang(localStorage.getItem("cdifnos.lang") || LANG);
+  applyZoom();
+  applyFont();
   renderAttrHead();
   applyStaticTexts();
   initControls();
-  loadSettings();
+  await Theme.loadList();
+  await Theme.apply(Theme.current());
+  await loadSettings();
+  buildMenus();
   refresh();
   loadAlarms();
   setInterval(refresh, 3000);

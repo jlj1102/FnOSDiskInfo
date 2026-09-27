@@ -47,6 +47,14 @@ Decisions that supersede conflicting text below:
 - Settings: `$TRIM_PKGVAR/settings.json` owned/written by the app user; collector reloads
   on mtime change. Display prefs (unit, raw format, hide serial, theme, language) are client-side.
 - Reports: `GET /api/disks/{id}/report.txt` (CDI-style text), `/raw` (raw smartctl JSON).
+- UI v0.3: CDI-style menubar (File/Edit/Function/Theme/Disk/Help, functional items only),
+  paged 80px disk buttons, left Health/Temp/Life blocks, two-column info grid, bottom SMART table.
+- Themes: built-ins `classic`/`dark`/`follow` embedded in `web/themes/<id>/theme.json`;
+  imported packs in `$TRIM_PKGVAR/themes/<id>/` (POST /api/themes/import, zip validated:
+  no traversal/symlinks/executables, extension whitelist, 20 MB cap). CDI-style packs without
+  theme.json get a best-effort manifest from asset names (themes.go). Served via `/themes/`.
+- Display prefs (client-side): zoom, font family/size, temperature unit, raw value format,
+  hide serial, hide SMART table, hide no-SMART disks, disk sort.
 - Local E2E harness: `go -C src build -o fake/smartctl.exe ./testdata/fake-smartctl`
   and prepend `fake/` to PATH when running the dev binary.
 

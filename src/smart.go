@@ -124,6 +124,14 @@ func runSmartctl(smartctl string, timeout time.Duration, args ...string) ([]byte
 	return exec.CommandContext(ctx, smartctl, args...).Output()
 }
 
+// runSmartctlCombined also captures stderr, for control commands whose
+// diagnostics (e.g. "AAM is not supported") only go there.
+func runSmartctlCombined(smartctl string, timeout time.Duration, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return exec.CommandContext(ctx, smartctl, args...).CombinedOutput()
+}
+
 // parseScanOutput parses `smartctl --scan-open` lines such as
 // `/dev/sda -d sat # /dev/sda [SAT], ATA device`.
 func parseScanOutput(out string) []Device {

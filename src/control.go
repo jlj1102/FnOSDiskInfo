@@ -143,7 +143,7 @@ func (c *collector) execRequest(r request) requestResult {
 	}
 	args = append(args, disk.Device)
 
-	out, err := runSmartctl(c.smartctl, 60*time.Second, args...)
+	out, err := runSmartctlCombined(c.smartctl, 60*time.Second, args...)
 	res.Output = string(out)
 	if err != nil && len(out) == 0 {
 		res.Error = err.Error()

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,13 +37,39 @@ func newHandler(dataDir string) http.Handler {
 	mux.HandleFunc("GET /api/settings", s.handleGetSettings)
 	mux.HandleFunc("PUT /api/settings", s.handlePutSettings)
 	mux.HandleFunc("GET /api/alarms", s.handleAlarms)
+	mux.HandleFunc("GET /api/themes", s.handleThemes)
+	mux.HandleFunc("POST /api/themes/import", s.handleThemeImport)
+	mux.HandleFunc("DELETE /api/themes/{id}", s.handleThemeDelete)
 
 	sub, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatal(err)
 	}
-	mux.Handle("/", http.FileServerFS(sub))
+	embedded := http.FileServerFS(sub)
+	mux.Handle("/themes/", s.serveThemes(embedded))
+	mux.Handle("/", embedded)
 	return mux
+}
+
+// serveThemes serves imported theme files from $TRIM_PKGVAR/themes and falls
+// back to the embedded built-in themes.
+func (s *server) serveThemes(embedded http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/themes/")
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) == 2 && themeIDPattern.MatchString(parts[0]) && !isBuiltinTheme(parts[0]) {
+			name := path.Clean("/" + parts[1])
+			name = strings.TrimPrefix(name, "/")
+			if name != "" && !strings.Contains(name, "..") {
+				p := filepath.Join(themesDir(s.dataDir), parts[0], filepath.FromSlash(name))
+				if st, err := os.Stat(p); err == nil && !st.IsDir() {
+					http.ServeFile(w, r, p)
+					return
+				}
+			}
+		}
+		embedded.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -348,4 +375,43 @@ func validateSettings(s settings) error {
 
 func (s *server) handleAlarms(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"alarms": readAlarms(s.dataDir, 200)})
+}
+
+func (s *server) handleThemes(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"themes": listThemes(s.dataDir)})
+}
+
+func (s *server) handleThemeImport(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
+		return
+	}
+	info, err := importTheme(s.dataDir, r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *server) handleThemeDelete(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request rejected"})
+		return
+	}
+	id := r.PathValue("id")
+	if !themeIDPattern.MatchString(id) || isBuiltinTheme(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot delete this theme"})
+		return
+	}
+	target := filepath.Join(themesDir(s.dataDir), id)
+	if _, err := os.Stat(target); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "theme not found"})
+		return
+	}
+	if err := os.RemoveAll(target); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

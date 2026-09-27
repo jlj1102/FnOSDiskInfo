@@ -152,6 +152,98 @@ const I18N = {
   }
 };
 
+// Menu / dialog strings added with the CDI-style menubar.
+const EXTRA = {
+  en: {
+    menu_file: "File", menu_edit: "Edit", menu_function: "Function", menu_theme: "Theme",
+    menu_disk: "Disk", menu_help: "Help",
+    save_text: "Save Text", copy: "Copy", refresh: "Refresh", auto_refresh: "Auto Refresh",
+    disable: "Disable", hide_serial_number: "Hide Serial Number", alerts: "Alerts",
+    alarm_list: "Alarm List", advanced: "Advanced",
+    health_status_setting: "Health Status Setting", temperature_setting: "Temperature Setting",
+    temp_unit: "Temperature Unit", raw_values: "Raw Values", hide_smart: "Hide S.M.A.R.T. Information",
+    hide_no_smart: "Hide No S.M.A.R.T. Disk", disk_sort: "Drive Sort Method",
+    sort_device: "Device", sort_model: "Model", sort_serial: "Serial",
+    zoom: "Zoom", zoom_auto: "Auto", font_setting: "Font Setting", font_family: "Font",
+    font_size: "Size", font_default: "Default",
+    about: "About", about_smart: "About S.M.A.R.T.",
+    about_text: "DiskInfo for fnOS — a CrystalDiskInfo-style disk health viewer.\nInspired by CrystalDiskInfo (MIT). SMART data via smartmontools.",
+    theme_import: "Import Theme Pack...", theme_delete: "Delete Current Theme",
+    theme_import_ok: "Theme imported", theme_import_fail: "Import failed",
+    theme_delete_confirm: "Delete this theme?", theme_custom: "Custom Theme",
+    copy_ok: "Copied to clipboard", copy_fail: "Copy failed",
+    aam_apm_unsupported: "Device does not report AAM/APM support",
+    value_required: "Enter a value between 1 and 254"
+  },
+  "zh-CN": {
+    menu_file: "文件", menu_edit: "编辑", menu_function: "功能", menu_theme: "主题",
+    menu_disk: "硬盘", menu_help: "帮助",
+    save_text: "保存文本", copy: "复制", refresh: "刷新", auto_refresh: "自动刷新",
+    disable: "禁用", hide_serial_number: "隐藏序列号", alerts: "报警功能",
+    alarm_list: "报警列表", advanced: "高级功能",
+    health_status_setting: "健康状态设置", temperature_setting: "温度设置",
+    temp_unit: "温度单位", raw_values: "原始值显示", hide_smart: "隐藏 S.M.A.R.T. 信息",
+    hide_no_smart: "隐藏无 S.M.A.R.T. 硬盘", disk_sort: "硬盘排序",
+    sort_device: "设备名", sort_model: "型号", sort_serial: "序列号",
+    zoom: "缩放", zoom_auto: "自动", font_setting: "字体设置", font_family: "字体",
+    font_size: "字号", font_default: "默认",
+    about: "关于", about_smart: "关于 S.M.A.R.T.",
+    about_text: "DiskInfo for fnOS —— CrystalDiskInfo 风格的硬盘健康查看器。\n灵感来自 CrystalDiskInfo（MIT）。SMART 数据来自 smartmontools。",
+    theme_import: "导入主题包…", theme_delete: "删除当前主题",
+    theme_import_ok: "主题已导入", theme_import_fail: "导入失败",
+    theme_delete_confirm: "确定删除该主题？", theme_custom: "自定义主题",
+    copy_ok: "已复制到剪贴板", copy_fail: "复制失败",
+    aam_apm_unsupported: "设备未上报 AAM/APM 支持",
+    value_required: "请输入 1-254 之间的数值"
+  },
+  "zh-TW": {
+    menu_file: "檔案", menu_edit: "編輯", menu_function: "功能", menu_theme: "主題",
+    menu_disk: "硬碟", menu_help: "說明",
+    save_text: "儲存文字", copy: "複製", refresh: "重新整理", auto_refresh: "自動重新整理",
+    disable: "停用", hide_serial_number: "隱藏序號", alerts: "警報功能",
+    alarm_list: "警報列表", advanced: "進階功能",
+    health_status_setting: "健康狀態設定", temperature_setting: "溫度設定",
+    temp_unit: "溫度單位", raw_values: "原始值顯示", hide_smart: "隱藏 S.M.A.R.T. 資訊",
+    hide_no_smart: "隱藏無 S.M.A.R.T. 硬碟", disk_sort: "硬碟排序",
+    sort_device: "裝置名稱", sort_model: "型號", sort_serial: "序號",
+    zoom: "縮放", zoom_auto: "自動", font_setting: "字型設定", font_family: "字型",
+    font_size: "字級", font_default: "預設",
+    about: "關於", about_smart: "關於 S.M.A.R.T.",
+    about_text: "DiskInfo for fnOS —— CrystalDiskInfo 風格的硬碟健康檢視器。\n靈感來自 CrystalDiskInfo（MIT）。SMART 資料來自 smartmontools。",
+    theme_import: "匯入主題包…", theme_delete: "刪除目前主題",
+    theme_import_ok: "主題已匯入", theme_import_fail: "匯入失敗",
+    theme_delete_confirm: "確定刪除該主題？", theme_custom: "自訂主題",
+    copy_ok: "已複製到剪貼簿", copy_fail: "複製失敗",
+    aam_apm_unsupported: "裝置未回報 AAM/APM 支援",
+    value_required: "請輸入 1-254 之間的數值"
+  },
+  ja: {
+    menu_file: "ファイル", menu_edit: "編集", menu_function: "機能", menu_theme: "テーマ",
+    menu_disk: "ディスク", menu_help: "ヘルプ",
+    save_text: "テキストを保存", copy: "コピー", refresh: "更新", auto_refresh: "自動更新",
+    disable: "無効", hide_serial_number: "シリアル番号を隠す", alerts: "アラーム機能",
+    alarm_list: "アラーム一覧", advanced: "詳細機能",
+    health_status_setting: "健康状態設定", temperature_setting: "温度設定",
+    temp_unit: "温度単位", raw_values: "生値表示", hide_smart: "S.M.A.R.T. 情報を隠す",
+    hide_no_smart: "S.M.A.R.T. 非対応ディスクを隠す", disk_sort: "ディスクの並べ替え",
+    sort_device: "デバイス名", sort_model: "型番", sort_serial: "シリアル番号",
+    zoom: "ズーム", zoom_auto: "自動", font_setting: "フォント設定", font_family: "フォント",
+    font_size: "文字サイズ", font_default: "デフォルト",
+    about: "バージョン情報", about_smart: "S.M.A.R.T. について",
+    about_text: "DiskInfo for fnOS — CrystalDiskInfo スタイルのディスク健康ビューア。\nCrystalDiskInfo (MIT) にインスパイアされました。SMART データは smartmontools によるものです。",
+    theme_import: "テーマをインポート…", theme_delete: "現在のテーマを削除",
+    theme_import_ok: "テーマをインポートしました", theme_import_fail: "インポートに失敗しました",
+    theme_delete_confirm: "このテーマを削除しますか？", theme_custom: "カスタムテーマ",
+    copy_ok: "クリップボードにコピーしました", copy_fail: "コピーに失敗しました",
+    aam_apm_unsupported: "AAM/APM 非対応のデバイスです",
+    value_required: "1〜254 の値を入力してください"
+  }
+};
+
+for (const [lang, map] of Object.entries(EXTRA)) {
+  Object.assign(I18N[lang], map);
+}
+
 let LANG = (navigator.language || "en").toLowerCase();
 if (LANG.startsWith("zh")) {
   LANG = LANG.includes("tw") || LANG.includes("hk") ? "zh-TW" : "zh-CN";
