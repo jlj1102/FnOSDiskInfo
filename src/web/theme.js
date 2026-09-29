@@ -6,14 +6,25 @@ const Theme = (() => {
   let list = [];
   let images = {};
   let frames = {};
+  let frameDirs = {};
   let currentId = "";
 
   function current() {
     return localStorage.getItem("cdifnos.theme") || "classic";
   }
 
+  // fallback(): "none" | "auto" | imported theme id — fills slots the active
+  // theme does not ship (merged server-side in /themes/<id>/theme.json).
+  function fallback() {
+    return localStorage.getItem("cdifnos.fallback") || "auto";
+  }
+
   function isBuiltin(id) {
     return ["classic", "dark", "follow"].includes(id);
+  }
+
+  function hasArt() {
+    return Object.keys(images).length > 0;
   }
 
   async function loadList() {
@@ -29,6 +40,7 @@ const Theme = (() => {
     localStorage.setItem("cdifnos.theme", id);
     images = {};
     frames = {};
+    frameDirs = {};
     currentId = id;
     const el = document.documentElement;
     const oldCss = document.getElementById("theme-css");
@@ -49,7 +61,8 @@ const Theme = (() => {
     el.dataset.theme = "custom";
     try {
       const stamp = Date.now();
-      const m = await (await fetch(`/themes/${id}/theme.json?t=${stamp}`)).json();
+      const fb = encodeURIComponent(fallback());
+      const m = await (await fetch(`/themes/${id}/theme.json?t=${stamp}&fallback=${fb}`)).json();
       for (const [k, v] of Object.entries(m.vars || {})) {
         if (k.startsWith("--cdi-")) {
           el.style.setProperty(k, v);
@@ -63,9 +76,12 @@ const Theme = (() => {
         document.head.append(st);
       }
       for (const [slot, file] of Object.entries(m.images || {})) {
-        images[slot] = `/themes/${id}/${file}`;
+        // Values without a leading "/" are relative to this theme; fallback
+        // slots come in as absolute "/themes/<provider>/<file>" URLs.
+        images[slot] = file.startsWith("/") ? file : `/themes/${id}/${file}`;
       }
       frames = m.frame_count || {};
+      frameDirs = m.frame_dir || {};
       // glass panel: semi-transparent panels when the theme carries an alpha.
       // Readability floor: CDI blends at 128/255 on small windows; a full-page
       // web UI needs a bit more opacity for text to stay legible.
@@ -90,17 +106,14 @@ const Theme = (() => {
   }
 
   function applyChrome(imgs) {
+    const main = document.getElementById("mainArea");
     if (imgs.background) {
-      document.body.style.backgroundImage = `url("${imgs.background}")`;
-      // CDI draws the backdrop bitmap 1:1 from the top-left (pattern brush),
-      // it is never stretched to fill the window.
-      document.body.style.backgroundSize = "auto";
-      document.body.style.backgroundPosition = "left top";
-      document.body.style.backgroundRepeat = "no-repeat";
+      // Sizing/tiling lives in style.css (body.themed-bg #mainArea); the art
+      // origin is the client area top-left like CDI, not the page top.
+      main.style.backgroundImage = `url("${imgs.background}")`;
       document.body.classList.add("themed-bg");
     } else {
-      document.body.style.backgroundImage = "";
-      document.body.style.backgroundRepeat = "";
+      main.style.backgroundImage = "";
       document.body.classList.remove("themed-bg");
     }
   }
@@ -115,7 +128,8 @@ const Theme = (() => {
     if (n < 0 || n >= count) {
       n = 0;
     }
-    return `/themes/${currentId}/${slot}.${n}.png`;
+    const dir = frameDirs[slot] || `/themes/${currentId}`;
+    return `${dir}/${slot}.${n}.png`;
   }
 
   async function importFile(file) {
@@ -141,9 +155,11 @@ const Theme = (() => {
     loadList,
     apply,
     current,
+    fallback,
     importFile,
     remove,
     frameUrl,
+    hasArt,
     get list() {
       return list;
     },

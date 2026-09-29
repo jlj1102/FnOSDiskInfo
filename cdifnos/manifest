@@ -8,3 +8,4 @@ desktop_uidir         = ui
 desktop_applaunchname = cdifnos.main
 service_port          = 7817
 checkport             = true
+micro_app             = true

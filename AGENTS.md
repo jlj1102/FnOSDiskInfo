@@ -59,8 +59,7 @@ Decisions that supersede conflicting text below:
   theme.json get a best-effort manifest from asset names (themes.go). Served via `/themes/`.
 - Display prefs (client-side): zoom, font family/size, temperature unit, raw value format,
   hide serial, hide SMART table, hide no-SMART disks, disk sort.
-- v0.4: menu checked-state evaluated at paint time (`checked: () => ...`); CDI theme packs
-  decode `theme.ini` ([Color]/[Alpha]/ParentTheme) plus `<asset>-<zoom>.png` assets
+- v0.4: menu checked-state evaluated at paint time (`checked: () => ...`); CDI theme packs  decode `theme.ini` ([Color]/[Alpha]/ParentTheme) plus `<asset>-<zoom>.png` assets
   (themes.go, one zoom per asset kept, multi-theme zips supported, re-importing the same
   theme id overwrites the previous pack); asset slots are family-correct and deterministic:
   `disk_*` (top buttons) / `status_*` (health) / `sd_*` (life) / `temp_*` / `background` /
@@ -70,10 +69,58 @@ Decisions that supersede conflicting text below:
   queried on demand (`aam-apm-get`) instead of inferred, raw smartctl output is collapsed;
   `exclude_disks` removes disks from auto refresh (collector marks them `stale`);
   File > Save Image renders the current view to PNG via snapshot.js. Character themes draw
-  the backdrop 1:1 from the top-left (CDI pattern-brush behavior) with blur + alpha floor 0.65
+  the backdrop CDI-style (the `-300` asset scaled to the 1000px design width, tiled both
+  axes from the client-area top-left, i.e. `#mainArea`) with blur + alpha floor 0.65
   for readability.
-- Local E2E harness: `go -C src build -o fake/smartctl.exe ./testdata/fake-smartctl`
-  and prepend `fake/` to PATH when running the dev binary.
+- Local E2E harness: `go -C src build -o ..\fake\smartctl.exe ./testdata/fake-smartctl`
+  and prepend `fake\` (repo root) to PATH when running the dev binary.
+
+- v0.5: CDI Shizuku geometry layout (character column 328px + content column 672px, disk
+  buttons 84x48 with 3-line text, status/temp/life art with overlaid text) activates only
+  when the theme ships art; Graph/Option windows are ports of CDI's Graph.html/Option.html
+  using vendored jQuery+flot (MIT, `web/flot/`), fed by the history API; history points now
+  carry every attribute's current value and `metric=attr-XX` plots any of them.
+- v0.5.1: geometry panel bug — `#geo` carried `hidden` and `.hidden{display:none!important}`
+  beat `body.cdi-geometry .geo{display:block}` so themed mode showed only the SMART table;
+  the class is gone now. Backdrop is one image, `cover`-fitted (width first, height-fit
+  fallback so no empty strip appears), `no-repeat`, left top, on `#mainArea`
+  (client-area origin, below the menubar). The character column flexes
+  (`1 1 328px`) so the 672px content column hugs the right edge when the window grows.
+  Geometry disk buttons must use full-size `disk_*` art (84x48) — `tabIconSrc` prefers the
+  42x48 `_mini` strip, which was stretched to 84px and blurred (now `geoIconSrc`).
+  Health block text is CDI Shizuku style: `status (life %)` (`DiskInfoDlgUpdate.cpp`); the
+  SD life art carries no text overlay, and life==100 with good health swaps in the
+  `sd_good100` slot (`SDdiskStatusGood100` — a distinct slot now, not a clash).
+- v0.5.2: ATA identity extras parsed from the same `-x -j` output (real samples in
+  `%TEMP%\opencode\sda.json`/`sdb.json`, keys verified against smartmontools source):
+  top-level `rotation_rate` (0 = SSD; reading `device.rotation_rate` was wrong and showed
+  HDDs as "SSD"); `interface_speed.current/max` → CDI-style `SATA/600 | SATA/600` (from
+  `units_per_second` 60/30/15, raw string fallback); `ata_version.major_value` bitmask
+  (highest bit) + `sata_version.string` → `ACS-3 | SATA 3.1`; features = `smart_support` /
+  `ata_aam` / `ata_apm` / `trim.supported` / `gp_logging_supported`, NCQ inferred from the
+  NCQ Command Error log (GP log 0x10) — DevSleep/Streaming/buffer_size/nv_cache have no
+  smartctl JSON source, NVMe (`nvme_version`) not wired (no sample).
+- v0.5.3: theme image fallback mirrors CDI's `IP()` chain (DialogFx.cpp): active theme ->
+  `ParentTheme1/2` from theme.ini (case-insensitive dir lookup) -> fallback theme chosen in
+  the Theme menu (`localStorage.cdifnos.fallback`: `none`/`auto`/<id>; auto = imported theme
+  with the most image slots). `GET /themes/<id>/theme.json?fallback=...` merges server-side;
+  merged slots carry absolute `/themes/<provider>/<file>` URLs, plus `frame_count` and
+  `frame_dir` for sprite frames (theme.js resolves those). Menubar is host chrome with its
+  own palette (`--cdi-navbar-bg/-text/-border`): CDI packs never tint it (see v0.5.4).
+- v0.5.4: the menubar follows the fnOS host theme via the official JS SDK. `manifest` has
+  `micro_app = true` (required for the SDK); `@trimjs/web-app` 0.4.2 ESM is vendored at
+  `web/trim/index.js` and `web/platform.js` calls `getPlatformConfig()` then
+  `$on('os/theme')` for live switches, setting `data-navbar="dark|light"`. Standalone
+  browsers / older fnOS keep the `prefers-color-scheme` fallback
+  (`:root:not([data-navbar])`); the CSS navbar palette is no longer keyed on `data-theme`.
+  The host does not push `os/theme` to third-party pages, so `platform.js` also polls
+  `getPlatformConfig()` every 3s (no overlap, hidden tabs skipped) — the menubar follows
+  without a reload.
+- v0.5.5: geometry info block used CDI client-area coordinates inside `.geo-info`, which
+  already sits below the 48px button row + title bar, so every row/art was 92px too low
+  (big gap under the model title, dead space above the SMART table). Offsets are now
+  relative to the info block: life/columns `top: 0`, status/temp art `168`, labels `172`,
+  title bar 40px, info height 200px — the geo block ends at CDI's y=288 list start.
 
 ---
 

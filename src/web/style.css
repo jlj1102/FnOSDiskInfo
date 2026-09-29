@@ -10,6 +10,12 @@
   --cdi-accent: #206ec8;
   --cdi-font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   --cdi-font-size: 12px;
+  /* Menubar is host chrome: its own palette, never themed by CDI packs.
+     The fnOS JS SDK (platform.js) sets data-navbar; the media query below is
+     only the fallback for standalone browsers / older hosts. */
+  --cdi-navbar-bg: #f6f6f6;
+  --cdi-navbar-text: #1a1a1a;
+  --cdi-navbar-border: #c9c9c9;
 }
 
 :root[data-theme="dark"],
@@ -39,6 +45,28 @@
   }
 }
 
+/* Host theme from the fnOS JS SDK. */
+:root[data-navbar="dark"] {
+  --cdi-navbar-bg: #2a2a2a;
+  --cdi-navbar-text: #e8e8e8;
+  --cdi-navbar-border: #4a4a4a;
+}
+
+:root[data-navbar="light"] {
+  --cdi-navbar-bg: #f6f6f6;
+  --cdi-navbar-text: #1a1a1a;
+  --cdi-navbar-border: #c9c9c9;
+}
+
+/* Fallback until (or unless) the SDK reports the host theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-navbar]) {
+    --cdi-navbar-bg: #2a2a2a;
+    --cdi-navbar-text: #e8e8e8;
+    --cdi-navbar-border: #4a4a4a;
+  }
+}
+
 * { box-sizing: border-box; }
 
 .hidden { display: none !important; }
@@ -51,6 +79,14 @@ body.themed-bg .tab,
 body.themed-bg .menu-drop {
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
+}
+
+/* Backdrop art: one image, cover-fitted — width first, height-fit only when the
+   bottom would go empty; left/top pinned so the character stays visible. */
+body.themed-bg #mainArea {
+  background-position: left top;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 html, body { height: 100%; }
@@ -75,8 +111,8 @@ body {
   position: relative;
   z-index: 30;
   display: flex;
-  background: var(--cdi-panel);
-  border-bottom: 1px solid var(--cdi-border);
+  background: var(--cdi-navbar-bg);
+  border-bottom: 1px solid var(--cdi-navbar-border);
 }
 
 .menu-root { position: relative; }
@@ -85,7 +121,7 @@ body {
   padding: 4px 11px;
   border: none;
   background: transparent;
-  color: var(--cdi-text);
+  color: var(--cdi-navbar-text);
   font: inherit;
   cursor: pointer;
 }
@@ -99,8 +135,9 @@ body {
   z-index: 40;
   min-width: 200px;
   padding: 3px 0;
-  background: var(--cdi-panel);
-  border: 1px solid var(--cdi-border);
+  background: var(--cdi-navbar-bg);
+  border: 1px solid var(--cdi-navbar-border);
+  color: var(--cdi-navbar-text);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -117,7 +154,7 @@ body {
 .menu-entry:hover { background: var(--cdi-accent); color: #fff; }
 .menu-entry.checked::before { content: "✓"; position: absolute; left: 8px; }
 .menu-entry.disabled { opacity: 0.45; cursor: default; }
-.menu-entry.disabled:hover { background: transparent; color: var(--cdi-text); }
+.menu-entry.disabled:hover { background: transparent; color: var(--cdi-navbar-text); }
 .menu-entry.has-sub::after { content: "▶"; position: absolute; right: 8px; font-size: 8px; }
 
 .menu-entry > .menu-drop { display: none; top: -4px; left: 100%; }
@@ -398,3 +435,174 @@ select, input[type="number"], input[type="text"] {
 .alarms-table .bad { color: var(--cdi-bad); }
 .alarms-table .caution { color: var(--cdi-caution); }
 .alarms-table .good { color: var(--cdi-good); }
+
+/* ---------- CDI geometry mode (Shizuku-edition layout, themed packs) ---------- */
+
+.main-area { display: flex; flex: 1; min-height: 0; }
+.content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.geo-char { display: none; flex: 1 1 328px; min-width: 328px; }
+
+body.cdi-geometry .cdi { min-width: 1000px; }
+body.cdi-geometry .geo-char { display: block; }
+body.cdi-geometry .content-col { flex: 0 0 672px; width: 672px; }
+body.cdi-geometry .diskbar,
+body.cdi-geometry .workarea { display: none; }
+body.cdi-geometry .attrwrap { margin: 0 8px; flex: 1; }
+body.cdi-geometry .geo { display: block; }
+
+.geo { display: none; }
+
+.geo-disks { display: flex; }
+.geo-disk {
+  position: relative;
+  flex: 0 0 84px;
+  width: 84px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  overflow: hidden;
+}
+.geo-disk img { position: absolute; inset: 0; width: 84px; height: 48px; }
+.geo-disk .stack {
+  position: absolute;
+  inset: 3px 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.geo-disk .stack span {
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--cdi-button-text, var(--cdi-text));
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+  max-width: 82px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.geo-disk .t3 { font-size: 11px; opacity: 0.9; }
+
+.geo-titlebar { position: relative; height: 40px; }
+.geo-model {
+  margin: 4px 32px 0;
+  height: 32px;
+  line-height: 32px;
+  font-size: 24px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.geo-pager {
+  position: absolute;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.geo-pager img { width: 24px; height: 24px; display: block; }
+#geoPreDisk { left: 8px; }
+#geoNextDisk { right: 8px; }
+
+.geo-info { position: relative; width: 672px; height: 200px; flex: none; }
+
+.geo-life {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 128px;
+  height: 192px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.geo-life img { position: absolute; max-width: 128px; max-height: 192px; }
+
+.geo-col { position: absolute; }
+.geo-col-labels-left { left: 128px; top: 0; width: 128px; }
+.geo-col-values-left { left: 256px; top: 0; width: 180px; }
+.geo-col-labels-right { left: 436px; top: 0; width: 128px; }
+.geo-col-values-right { left: 564px; top: 0; width: 100px; }
+
+.geo-row {
+  height: 20px;
+  line-height: 20px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.geo-col-labels-left .geo-row,
+.geo-col-labels-right .geo-row { text-align: right; opacity: 0.85; }
+.geo-col-values-right .geo-row { text-align: right; }
+.geo-cell {
+  background: var(--cdi-panel);
+  border: 1px solid var(--cdi-border);
+  padding: 0 4px;
+}
+
+.geo-status-label,
+.geo-temp-label {
+  position: absolute;
+  top: 172px;
+  width: 128px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 12px;
+  text-align: right;
+  opacity: 0.85;
+}
+.geo-status-label { left: 128px; padding-right: 4px; }
+.geo-temp-label { left: 436px; padding-right: 4px; }
+
+.geo-status-art {
+  position: absolute;
+  left: 256px;
+  top: 168px;
+  width: 180px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.geo-temp-art {
+  position: absolute;
+  left: 564px;
+  top: 168px;
+  width: 100px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.geo-status-art img { position: absolute; inset: 0; width: 180px; height: 28px; }
+.geo-temp-art img { position: absolute; inset: 0; width: 100px; height: 28px; }
+.geo-status-art .overlay,
+.geo-temp-art .overlay {
+  position: relative;
+  z-index: 1;
+  font-weight: 700;
+  color: var(--cdi-button-text, var(--cdi-text));
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- graph / option iframe dialogs ---------- */
+
+.iframe-dialog { padding: 8px; }
+.iframe-dialog iframe {
+  display: block;
+  width: 92vw;
+  max-width: 1100px;
+  height: 72vh;
+  min-height: 420px;
+  border: 1px solid var(--cdi-border);
+  background: var(--cdi-panel);
+}

@@ -5,23 +5,27 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
+var attrMetricPattern = regexp.MustCompile(`^attr-([0-9A-Fa-f]{1,2})$`)
+
 type historyPoint struct {
-	T          int64  `json:"t"`
-	Status     string `json:"status,omitempty"`
-	Temp       *int   `json:"temperature,omitempty"`
-	Life       *int   `json:"life,omitempty"`
-	Hours      *int   `json:"power_on_hours,omitempty"`
-	Count      *int   `json:"power_on_count,omitempty"`
-	R05        *int64 `json:"reallocated,omitempty"`
-	RC4        *int64 `json:"realloc_events,omitempty"`
-	RC5        *int64 `json:"pending,omitempty"`
-	RC6        *int64 `json:"uncorrectable,omitempty"`
-	HostReads  *int64 `json:"host_reads,omitempty"`
-	HostWrites *int64 `json:"host_writes,omitempty"`
+	T          int64          `json:"t"`
+	Status     string         `json:"status,omitempty"`
+	Temp       *int           `json:"temperature,omitempty"`
+	Life       *int           `json:"life,omitempty"`
+	Hours      *int           `json:"power_on_hours,omitempty"`
+	Count      *int           `json:"power_on_count,omitempty"`
+	R05        *int64         `json:"reallocated,omitempty"`
+	RC4        *int64         `json:"realloc_events,omitempty"`
+	RC5        *int64         `json:"pending,omitempty"`
+	RC6        *int64         `json:"uncorrectable,omitempty"`
+	HostReads  *int64         `json:"host_reads,omitempty"`
+	HostWrites *int64         `json:"host_writes,omitempty"`
+	Attrs      map[string]int `json:"a,omitempty"` // attribute id (hex) -> current value
 }
 
 // historyMetrics maps API metric names to point accessors.
@@ -94,6 +98,13 @@ func historyPointFrom(d *Disk) historyPoint {
 		hw := d.NVMe.DataUnitsWritten * 512000 / 1e9
 		p.HostReads, p.HostWrites = &hr, &hw
 	}
+	if len(d.Attributes) > 0 {
+		p.Attrs = make(map[string]int, len(d.Attributes))
+		for i := range d.Attributes {
+			a := &d.Attributes[i]
+			p.Attrs[fmt.Sprintf("%02X", a.ID)] = a.Current
+		}
+	}
 	return p
 }
 
@@ -141,7 +152,20 @@ func sameHistoryPoint(a, b historyPoint) bool {
 		eqInt64(a.RC5, b.RC5) &&
 		eqInt64(a.RC6, b.RC6) &&
 		eqInt64(a.HostReads, b.HostReads) &&
-		eqInt64(a.HostWrites, b.HostWrites)
+		eqInt64(a.HostWrites, b.HostWrites) &&
+		eqIntMap(a.Attrs, b.Attrs)
+}
+
+func eqIntMap(a, b map[string]int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 func eqInt(a, b *int) bool {
@@ -253,8 +277,16 @@ func readAlarms(dataDir string, limit int) []alarmEvent {
 }
 
 func readHistory(dataDir, id, metric string, points int) ([][2]int64, bool) {
-	fn, ok := historyMetrics[metric]
-	if !ok {
+	var fn func(historyPoint) (int64, bool)
+	if m := attrMetricPattern.FindStringSubmatch(metric); m != nil {
+		key := strings.ToUpper(fmt.Sprintf("%02s", m[1]))
+		fn = func(p historyPoint) (int64, bool) {
+			v, ok := p.Attrs[key]
+			return int64(v), ok
+		}
+	} else if f, ok := historyMetrics[metric]; ok {
+		fn = f
+	} else {
 		return nil, false
 	}
 	raw, err := os.ReadFile(historyPath(dataDir, id))

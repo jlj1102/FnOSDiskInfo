@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf16"
 )
@@ -100,7 +101,7 @@ func TestImportCDIZoomPack(t *testing.T) {
 		"LabelText=0x000000;\r\nListBk1=0xFFFFFF;\r\nListBk2=0xF8F8F8;\r\nListLine1=0xE0E0E0;\r\n" +
 		"Glass=0xFFFFFF;\r\n\r\n[Alpha]\r\nGlassAlpha=128;\r\n"
 	z := makeZip(t, map[string]string{
-		"ShizukuOffice/theme.ini":               ini,
+		"ShizukuOffice/theme.ini":                 ini,
 		"ShizukuOffice/ShizukuBackground-100.png": "small",
 		"ShizukuOffice/ShizukuBackground-300.png": "big",
 		"ShizukuOffice/diskGood-100.png":          "g100",
@@ -138,7 +139,7 @@ func TestImportCDIZoomPack(t *testing.T) {
 func TestImportMultiThemeZip(t *testing.T) {
 	dir := t.TempDir()
 	z := makeZip(t, map[string]string{
-		"A/theme.ini":  "[Color]\r\nListBk1=0xFFFFFF;\r\n",
+		"A/theme.ini":    "[Color]\r\nListBk1=0xFFFFFF;\r\n",
 		"A/good-100.png": "a",
 		"B/bad-100.png":  "b",
 	})
@@ -212,17 +213,18 @@ func TestThemeDeleteGuard(t *testing.T) {
 
 func TestSlotForBase(t *testing.T) {
 	cases := map[string]string{
-		"diskGood":           "disk_good",
-		"diskStatusGoodMini": "status_good_mini",
-		"SDdiskStatusBad":    "sd_bad",
-		"temperatureCaution": "temp_caution",
-		"noDiskMini":         "nodisk",
-		"nextDisk":           "next",
-		"ShizukuBackground":  "background",
-		"logo":               "logo",
-		"good":               "status_good",
-		"playSound":          "",
-		"ShizukuCopyright":   "",
+		"diskGood":            "disk_good",
+		"diskStatusGoodMini":  "status_good_mini",
+		"SDdiskStatusBad":     "sd_bad",
+		"SDdiskStatusGood100": "sd_good100",
+		"temperatureCaution":  "temp_caution",
+		"noDiskMini":          "nodisk",
+		"nextDisk":            "next",
+		"ShizukuBackground":   "background",
+		"logo":                "logo",
+		"good":                "status_good",
+		"playSound":           "",
+		"ShizukuCopyright":    "",
 	}
 	for in, want := range cases {
 		if got, _ := slotForBase(in); got != want {
@@ -239,11 +241,12 @@ func TestSlotForBase(t *testing.T) {
 func TestSlotPriority(t *testing.T) {
 	dir := t.TempDir()
 	z := makeZip(t, map[string]string{
-		"T/diskGood-100.png":         "btn",
-		"T/diskStatusGood-100.png":   "health",
-		"T/SDdiskStatusGood-100.png": "life",
-		"T/temperatureGood-100.png":  "temp",
-		"T/good-100.png":             "generic",
+		"T/diskGood-100.png":            "btn",
+		"T/diskStatusGood-100.png":      "health",
+		"T/SDdiskStatusGood-100.png":    "life",
+		"T/SDdiskStatusGood100-100.png": "life100",
+		"T/temperatureGood-100.png":     "temp",
+		"T/good-100.png":                "generic",
 	})
 	importZip(t, dir, z)
 	m := readManifest(t, dir, "t")
@@ -251,6 +254,7 @@ func TestSlotPriority(t *testing.T) {
 		"disk_good":   "diskGood-100.png",
 		"status_good": "diskStatusGood-100.png",
 		"sd_good":     "SDdiskStatusGood-100.png",
+		"sd_good100":  "SDdiskStatusGood100-100.png",
 		"temp_good":   "temperatureGood-100.png",
 	} {
 		if m.Images[slot] != want {
@@ -310,6 +314,62 @@ func TestSplitFrames(t *testing.T) {
 	}
 	if names := splitPNGFrames(src, out, "logo", 1); names != nil {
 		t.Errorf("single-frame slot must stay single, got %v", names)
+	}
+}
+
+// CDI image fallback: active theme -> ParentTheme1/2 -> fallback theme
+// (DialogFx.cpp IP()). Merged slots point at the providing theme dir.
+func TestMergeThemeFallback(t *testing.T) {
+	dir := t.TempDir()
+	z := makeZip(t, map[string]string{
+		"Full/theme.ini":                   "[Info]\n",
+		"Full/diskGood-100.png":            string(makeStripPNG(t, 84, 192)),
+		"Full/diskStatusGood-100.png":      string(makeStripPNG(t, 180, 28)),
+		"Full/temperatureGood-100.png":     string(makeStripPNG(t, 100, 28)),
+		"Full/SDdiskStatusGood-100.png":    string(makeStripPNG(t, 128, 192)),
+		"Full/ShizukuBackground-300.png":   string(makeStripPNG(t, 64, 64)),
+		"Parent/theme.ini":                 "[Info]\n",
+		"Parent/SDdiskStatusGood-100.png":  string(makeStripPNG(t, 128, 192)),
+		"Parent/ShizukuBackground-300.png": string(makeStripPNG(t, 64, 64)),
+		"Child/theme.ini":                  "[Info]\nParentTheme1=Parent\n",
+		"Child/ShizukuBackground-300.png":  string(makeStripPNG(t, 64, 64)),
+	})
+	importZip(t, dir, z)
+
+	m, err := mergeThemeManifest(dir, "child", "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(m.Images["background"], "ShizukuBackground") {
+		t.Errorf("background should stay local, got %q", m.Images["background"])
+	}
+	if !strings.HasPrefix(m.Images["sd_good"], "/themes/parent/") {
+		t.Errorf("sd_good should come from the parent, got %q", m.Images["sd_good"])
+	}
+	if !strings.HasPrefix(m.Images["disk_good"], "/themes/full/") {
+		t.Errorf("disk_good should come from the fallback, got %q", m.Images["disk_good"])
+	}
+	if m.FrameCount["disk_good"] != 4 || m.FrameDir["disk_good"] != "/themes/full" {
+		t.Errorf("frames = %v dir = %v", m.FrameCount, m.FrameDir)
+	}
+
+	m, err = mergeThemeManifest(dir, "child", "none")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Images["disk_good"] != "" || m.Images["status_good"] != "" {
+		t.Errorf("none must not pull fallback slots: %v", m.Images)
+	}
+	if !strings.HasPrefix(m.Images["sd_good"], "/themes/parent/") {
+		t.Errorf("parent still applies with none, got %q", m.Images["sd_good"])
+	}
+
+	m, err = mergeThemeManifest(dir, "child", "full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(m.Images["status_good"], "/themes/full/") {
+		t.Errorf("explicit fallback failed: %q", m.Images["status_good"])
 	}
 }
 

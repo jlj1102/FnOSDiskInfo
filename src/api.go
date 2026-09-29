@@ -62,6 +62,16 @@ func (s *server) serveThemes(embedded http.Handler) http.Handler {
 			name := path.Clean("/" + parts[1])
 			name = strings.TrimPrefix(name, "/")
 			if name != "" && !strings.Contains(name, "..") {
+				if name == "theme.json" {
+					fb := r.URL.Query().Get("fallback")
+					if fb != "auto" && fb != "none" && !themeIDPattern.MatchString(fb) {
+						fb = "none"
+					}
+					if m, err := mergeThemeManifest(s.dataDir, parts[0], fb); err == nil {
+						writeJSON(w, http.StatusOK, m)
+						return
+					}
+				}
 				p := filepath.Join(themesDir(s.dataDir), parts[0], filepath.FromSlash(name))
 				if st, err := os.Stat(p); err == nil && !st.IsDir() {
 					http.ServeFile(w, r, p)

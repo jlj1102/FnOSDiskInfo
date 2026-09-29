@@ -74,6 +74,9 @@ type Disk struct {
 	PowerOnHours  *int        `json:"power_on_hours,omitempty"`
 	PowerOnCount  *int        `json:"power_on_count,omitempty"`
 	RotationRate  int         `json:"rotation_rate,omitempty"`
+	TransferMode  string      `json:"transfer_mode,omitempty"`
+	Standard      string      `json:"standard,omitempty"`
+	Features      []string    `json:"features,omitempty"`
 	Life          *int        `json:"life,omitempty"`
 	Health        string      `json:"health"` // good | caution | bad | unknown
 	StatusReasons []string    `json:"status_reasons,omitempty"`
@@ -190,6 +193,12 @@ type selfTestRow struct {
 	Remaining     *int `json:"remaining_percent"`
 }
 
+// sataSpeed is one entry of smartctl's interface_speed (SATA link rate).
+type sataSpeed struct {
+	String         string `json:"string"`
+	UnitsPerSecond int    `json:"units_per_second"`
+}
+
 type smartJSON struct {
 	Device struct {
 		Name         string `json:"name"`
@@ -216,6 +225,35 @@ type smartJSON struct {
 		Hours *int `json:"hours"`
 	} `json:"power_on_time"`
 	PowerCycleCount *int `json:"power_cycle_count"`
+	// RotationRate is top-level in real smartctl output (rpm, 0 = SSD);
+	// device.rotation_rate is a fallback for older fixtures.
+	RotationRate *int `json:"rotation_rate"`
+	SmartSupport struct {
+		Available bool `json:"available"`
+	} `json:"smart_support"`
+	InterfaceSpeed struct {
+		Max     sataSpeed `json:"max"`
+		Current sataSpeed `json:"current"`
+	} `json:"interface_speed"`
+	AtaVersion struct {
+		MajorValue int `json:"major_value"`
+	} `json:"ata_version"`
+	SataVersion struct {
+		String string `json:"string"`
+	} `json:"sata_version"`
+	Trim struct {
+		Supported bool `json:"supported"`
+	} `json:"trim"`
+	AtaLogDir struct {
+		Table []struct {
+			Address int `json:"address"`
+		} `json:"table"`
+	} `json:"ata_log_directory"`
+	AtaSmartData struct {
+		Capabilities struct {
+			GpLoggingSupported bool `json:"gp_logging_supported"`
+		} `json:"capabilities"`
+	} `json:"ata_smart_data"`
 	WWN             *struct {
 		NA  int   `json:"na"`
 		OUI int64 `json:"oui"`
@@ -312,6 +350,103 @@ func readSmart(smartctl string, d Device) ([]byte, *smartJSON, error) {
 	return out, &j, nil
 }
 
+// ---------- ATA identity extras (transfer mode / standard / features) ----------
+
+// rotationRate reads smartctl's top-level rotation_rate (0 = SSD); some older
+// outputs only carry it inside device.
+func rotationRate(j *smartJSON) int {
+	if j.RotationRate != nil {
+		return *j.RotationRate
+	}
+	return j.Device.RotationRate
+}
+
+// sataSpeedString renders one interface_speed entry CDI-style ("SATA/600")
+// from the link rate unit; the raw smartctl string is the fallback.
+func sataSpeedString(s sataSpeed) string {
+	switch s.UnitsPerSecond {
+	case 60:
+		return "SATA/600"
+	case 30:
+		return "SATA/300"
+	case 15:
+		return "SATA/150"
+	}
+	return s.String
+}
+
+func transferMode(j *smartJSON) string {
+	cur := sataSpeedString(j.InterfaceSpeed.Current)
+	max := sataSpeedString(j.InterfaceSpeed.Max)
+	switch {
+	case cur == "" && max == "":
+		return ""
+	case cur == "":
+		return max
+	case max == "":
+		return cur
+	}
+	return cur + " | " + max
+}
+
+// ataMajorName maps ata_version.major_value (bitmask) to the ATA standard
+// name: highest set bit, same table as smartctl's get_ata_major_version.
+func ataMajorName(v int) string {
+	names := []string{"", "ATA-1", "ATA-2", "ATA-3", "ATA/ATAPI-4", "ATA/ATAPI-5",
+		"ATA/ATAPI-6", "ATA/ATAPI-7", "ATA8-ACS", "ACS-2", "ACS-3", "ACS-4", "ACS-5", "ACS-6"}
+	for bit := 15; bit >= 1; bit-- {
+		if v&(1<<bit) == 0 {
+			continue
+		}
+		if bit < len(names) {
+			return names[bit]
+		}
+		return "ACS >6"
+	}
+	return ""
+}
+
+// ataStandard is "ACS-3 | SATA 3.1" (ATA major standard | SATA spec version).
+func ataStandard(j *smartJSON) string {
+	var parts []string
+	if n := ataMajorName(j.AtaVersion.MajorValue); n != "" {
+		parts = append(parts, n)
+	}
+	if j.SataVersion.String != "" {
+		parts = append(parts, j.SataVersion.String)
+	}
+	return strings.Join(parts, " | ")
+}
+
+// ataFeatures mirrors CDI's feature row with what smartctl's JSON exposes.
+// NCQ is inferred from the NCQ Command Error log (GP log 0x10, mandatory for
+// NCQ capable devices); DevSleep/Streaming are not in smartctl output.
+func ataFeatures(j *smartJSON) []string {
+	var f []string
+	if j.SmartSupport.Available {
+		f = append(f, "S.M.A.R.T.")
+	}
+	if j.AtaApm != nil {
+		f = append(f, "APM")
+	}
+	if j.AtaAam != nil {
+		f = append(f, "AAM")
+	}
+	for _, e := range j.AtaLogDir.Table {
+		if e.Address == 0x10 {
+			f = append(f, "NCQ")
+			break
+		}
+	}
+	if j.Trim.Supported {
+		f = append(f, "TRIM")
+	}
+	if j.AtaSmartData.Capabilities.GpLoggingSupported {
+		f = append(f, "GPL")
+	}
+	return f
+}
+
 func normalize(d Device, j *smartJSON) Disk {
 	disk := Disk{
 		ID:            stableID(d.Path, j),
@@ -324,7 +459,10 @@ func normalize(d Device, j *smartJSON) Disk {
 		Temperature:   j.Temperature.Current,
 		PowerOnHours:  j.PowerOnTime.Hours,
 		PowerOnCount:  j.PowerCycleCount,
-		RotationRate:  j.Device.RotationRate,
+		RotationRate:  rotationRate(j),
+		TransferMode:  transferMode(j),
+		Standard:      ataStandard(j),
+		Features:      ataFeatures(j),
 		Health:        "unknown",
 		Attributes:    []Attribute{},
 		smartType:     d.Type,

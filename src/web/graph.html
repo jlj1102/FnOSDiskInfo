@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graph</title>
+<script src="flot/jquery.min.js"></script>
+<script src="flot/jquery.flot.min.js"></script>
+<script src="i18n.js"></script>
+<link rel="stylesheet" href="graph.css">
+</head>
+<body>
+<div id="toolbar">
+  <a href="#" class="icon" id="AllOn" title="all on">&#10003;&#10003;</a>
+  <a href="#" class="icon" id="AllOff" title="all off">&#9675;</a>
+  <a href="#" class="icon" id="Refresh" title="refresh">&#8635;</a>
+  <a href="#" class="icon" id="Customize" title="customize">&#9881;</a>
+  <span class="sep"></span>
+  <label id="legendLabel"></label>
+  <select id="LegendPosition">
+    <option value="nw">NW</option>
+    <option value="ne">NE</option>
+    <option value="sw">SW</option>
+    <option value="se">SE</option>
+  </select>
+  <label id="pointsLabel"></label>
+  <select id="MaxPoints"></select>
+  <label id="timeLabel"></label>
+  <select id="TimeFormat"></select>
+  <label class="check"><input type="checkbox" id="PaintWeekend"> <span id="weekendLabel"></span></label>
+</div>
+<div id="diskToggles"></div>
+<div id="select">
+  <select id="SelectAttributeId"></select>
+</div>
+<div id="placeholder"></div>
+<div id="overview"></div>
+<script src="graph.js"></script>
+</body>
+</html>

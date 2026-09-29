@@ -9,18 +9,33 @@
     "name": "/dev/sda",
     "info_name": "/dev/sda [SAT]",
     "type": "sat",
-    "protocol": "ATA",
-    "model_name": "ST3000DM008-2DM166",
-    "serial_number": "Z9A1B2C3",
-    "firmware_version": "CC26",
-    "rotation_rate": 7200
+    "protocol": "ATA"
   },
   "model_name": "ST3000DM008-2DM166",
   "serial_number": "Z9A1B2C3",
   "firmware_version": "CC26",
+  "rotation_rate": 7200,
   "user_capacity": {
     "blocks": 5860533168,
     "bytes": 3000592982016
+  },
+  "interface_speed": {
+    "max": {"sata_value": 14, "string": "6.0 Gb/s", "units_per_second": 60, "bits_per_unit": 100000000},
+    "current": {"sata_value": 3, "string": "6.0 Gb/s", "units_per_second": 60, "bits_per_unit": 100000000}
+  },
+  "ata_version": {"string": "ACS-3 T13/2161-D revision 5", "major_value": 2032, "minor_value": 109},
+  "sata_version": {"string": "SATA 3.1", "value": 127},
+  "trim": {"supported": false},
+  "smart_support": {"available": true, "enabled": true},
+  "ata_log_directory": {
+    "gp_dir_version": 1,
+    "table": [
+      {"address": 1, "name": "Summary SMART error log", "read": true},
+      {"address": 16, "name": "NCQ Command Error log", "read": true}
+    ]
+  },
+  "ata_smart_data": {
+    "capabilities": {"gp_logging_supported": true}
   },
   "smart_status": {
     "passed": true

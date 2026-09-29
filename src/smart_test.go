@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +42,18 @@ func TestNormalizeATA(t *testing.T) {
 	}
 	if len(d.Attributes) != 2 || d.Attributes[0].Raw != "0" || d.Attributes[1].Name != "Power_On_Hours" {
 		t.Errorf("attributes = %+v", d.Attributes)
+	}
+	if d.RotationRate != 7200 {
+		t.Errorf("rotation rate = %d", d.RotationRate)
+	}
+	if d.TransferMode != "SATA/600 | SATA/600" {
+		t.Errorf("transfer mode = %q", d.TransferMode)
+	}
+	if d.Standard != "ACS-3 | SATA 3.1" {
+		t.Errorf("standard = %q", d.Standard)
+	}
+	if got := strings.Join(d.Features, ","); got != "S.M.A.R.T.,NCQ,GPL" {
+		t.Errorf("features = %q", got)
 	}
 }
 

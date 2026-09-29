@@ -1,139 +1,376 @@
 "use strict";
 
-const GRAPH_COLORS = ["#e05050", "#206ec8", "#2e9e4f", "#c98a00", "#8e44ad", "#00838f", "#d35400", "#555555"];
+// Graph window, ported from CrystalDiskInfo's Graph.html (MIT):
+// flot line chart with all-disk toggles, attribute selection, overview strip,
+// weekend shading and selection zoom. Data comes from our history API.
 
-// drawGraph renders line series on a canvas with axes and legend.
-// series: [{name, points: [[unixSeconds, value], ...]}]
-function drawGraph(canvas, series) {
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || 600;
-  const h = canvas.clientHeight || 320;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const PREF_KEY = "cdifnos.graph";
 
-  const css = getComputedStyle(document.documentElement);
-  const text = css.getPropertyValue("--cdi-text").trim() || "#111";
-  const border = css.getPropertyValue("--cdi-border").trim() || "#aaa";
-  const panel = css.getPropertyValue("--cdi-panel").trim() || "#fff";
-  ctx.fillStyle = panel;
-  ctx.fillRect(0, 0, w, h);
+const FIXED_METRICS = [
+  ["temperature", "m_temperature"],
+  ["life", "m_life"],
+  ["power_on_hours", "m_power_on_hours"],
+  ["power_on_count", "m_power_on_count"],
+  ["host_reads", "m_host_reads"],
+  ["host_writes", "m_host_writes"],
+  ["reallocated", "m_reallocated"],
+  ["realloc_events", "m_realloc_events"],
+  ["pending", "m_pending"],
+  ["uncorrectable", "m_uncorrectable"]
+];
 
-  const all = [];
-  for (const s of series) {
-    for (const p of s.points) {
-      all.push(p);
-    }
+const POINTS = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000, 0];
+
+const TIMEFORMATS = [
+  ["%m/%d %H:%M", "MM/DD hh:mm"],
+  ["%m/%d", "MM/DD"],
+  ["%Y/%m/%d %H:%M", "YYYY/MM/DD hh:mm"],
+  ["%Y/%m/%d", "YYYY/MM/DD"],
+  ["%d/%m/%Y %H:%M", "DD/MM/YYYY hh:mm"],
+  ["%d/%m/%Y", "DD/MM/YYYY"],
+  ["%d.%m.%Y %H:%M", "DD.MM.YYYY hh:mm"],
+  ["%d.%m.%Y", "DD.MM.YYYY"]
+];
+
+let prefs = loadPrefs();
+let disks = [];
+let enabled = {};
+let metric = "temperature";
+let currentSeries = [];
+let plot = null;
+let overview = null;
+let internalSelection = false;
+let previousPoint = null;
+
+function defaultColors() {
+  const base = ["#e05050", "#206ec8", "#2e9e4f", "#c98a00", "#8e44ad", "#00838f", "#d35400", "#555555",
+    "#c0392b", "#2980b9", "#27ae60", "#f39c12", "#9b59b6", "#16a085", "#e67e22", "#7f8c8d"];
+  const out = [];
+  for (let i = 0; i < 64; i++) {
+    out.push(base[i % base.length]);
   }
-  if (!all.length) {
-    ctx.fillStyle = text;
-    ctx.font = "12px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("—", w / 2, h / 2);
-    return;
+  return out;
+}
+
+function loadPrefs() {
+  const base = {
+    colors: defaultColors(),
+    legend: "ne",
+    points: 500,
+    timeformat: "%Y/%m/%d %H:%M",
+    weekend: false,
+    background: ""
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
+    return Object.assign(base, saved, { colors: Object.assign(defaultColors(), saved.colors || []) });
+  } catch (e) {
+    return base;
   }
+}
 
-  const padL = 50, padR = 10, padT = 26, padB = 26;
-  const plotW = w - padL - padR;
-  const plotH = h - padT - padB;
-
-  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
-  for (const [x, y] of all) {
-    if (x < xmin) xmin = x;
-    if (x > xmax) xmax = x;
-    if (y < ymin) ymin = y;
-    if (y > ymax) ymax = y;
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) {
+    throw new Error(r.statusText);
   }
-  if (xmax === xmin) xmax = xmin + 1;
-  if (ymax === ymin) {
-    ymax += 1;
-    ymin -= 1;
-  } else {
-    const pad = (ymax - ymin) * 0.08;
-    ymin -= pad;
-    ymax += pad;
+  return r.json();
+}
+
+function applyBackground() {
+  document.body.style.backgroundImage = prefs.background ? `url("${prefs.background}")` : "";
+}
+
+function buildToolbar() {
+  document.getElementById("legendLabel").textContent = t("g_legend") + ":";
+  document.getElementById("pointsLabel").textContent = t("points") + ":";
+  document.getElementById("timeLabel").textContent = t("g_timeformat") + ":";
+  document.getElementById("weekendLabel").textContent = t("g_weekend");
+
+  const points = document.getElementById("MaxPoints");
+  points.textContent = "";
+  for (const n of POINTS) {
+    const o = document.createElement("option");
+    o.value = String(n);
+    o.textContent = n === 0 ? t("all") : String(n);
+    points.append(o);
   }
-  const X = (x) => padL + ((x - xmin) / (xmax - xmin)) * plotW;
-  const Y = (y) => padT + plotH - ((y - ymin) / (ymax - ymin)) * plotH;
+  points.value = String(prefs.points);
+  points.onchange = () => {
+    prefs.points = Number(points.value);
+    savePrefs();
+    refresh();
+  };
 
-  ctx.strokeStyle = border;
-  ctx.fillStyle = text;
-  ctx.lineWidth = 1;
-  ctx.font = "10px sans-serif";
-
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i <= 4; i++) {
-    const yv = ymin + ((ymax - ymin) * i) / 4;
-    const yy = Y(yv);
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    ctx.moveTo(padL, yy);
-    ctx.lineTo(w - padR, yy);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillText(fmtNum(yv), padL - 4, yy);
+  const tf = document.getElementById("TimeFormat");
+  tf.textContent = "";
+  for (const [v, label] of TIMEFORMATS) {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = label;
+    tf.append(o);
   }
+  tf.value = prefs.timeformat;
+  tf.onchange = () => {
+    prefs.timeformat = tf.value;
+    savePrefs();
+    redraw();
+  };
 
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (let i = 0; i <= 4; i++) {
-    const xv = xmin + ((xmax - xmin) * i) / 4;
-    const xx = X(xv);
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    ctx.moveTo(xx, padT);
-    ctx.lineTo(xx, padT + plotH);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillText(new Date(xv * 1000).toLocaleDateString(), xx, padT + plotH + 5);
-  }
+  const legend = document.getElementById("LegendPosition");
+  legend.value = prefs.legend;
+  legend.onchange = () => {
+    prefs.legend = legend.value;
+    savePrefs();
+    redraw();
+  };
 
-  series.forEach((s, i) => {
-    if (!s.points.length) {
-      return;
-    }
-    const color = GRAPH_COLORS[i % GRAPH_COLORS.length];
-    s.color = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    s.points.forEach(([x, y], j) => {
-      const px = X(x);
-      const py = Y(y);
-      if (j) {
-        ctx.lineTo(px, py);
-      } else {
-        ctx.moveTo(px, py);
-      }
+  const weekend = document.getElementById("PaintWeekend");
+  weekend.checked = prefs.weekend;
+  weekend.onchange = () => {
+    prefs.weekend = weekend.checked;
+    savePrefs();
+    redraw();
+  };
+}
+
+function buildToggles() {
+  const box = document.getElementById("diskToggles");
+  box.textContent = "";
+  disks.forEach((d, i) => {
+    const a = document.createElement("a");
+    a.href = "#";
+    a.className = enabled[d.id] ? "on" : "";
+    a.textContent = d.model || d.device;
+    a.title = d.device;
+    a.style.color = prefs.colors[i % 64];
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      enabled[d.id] = !enabled[d.id];
+      a.classList.toggle("on", enabled[d.id]);
+      refresh();
     });
-    ctx.stroke();
-    if (s.points.length === 1) {
-      ctx.fillStyle = color;
-      ctx.fillRect(X(s.points[0][0]) - 2, Y(s.points[0][1]) - 2, 4, 4);
-    }
+    box.append(a);
   });
+}
 
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  let lx = padL + 2;
-  series.forEach((s) => {
-    if (!s.color) {
+function addOption(parent, value, label) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = label;
+  parent.append(o);
+}
+
+async function buildSelect() {
+  const sel = document.getElementById("SelectAttributeId");
+  sel.textContent = "";
+  for (const [m, key] of FIXED_METRICS) {
+    addOption(sel, m, t(key));
+  }
+  const d = disks[0];
+  if (d && !d.error) {
+    try {
+      const s = await api("/api/disks/" + encodeURIComponent(d.id) + "/smart");
+      const group = document.createElement("optgroup");
+      group.label = t("col_attr");
+      for (const a of s.attributes || []) {
+        const hex = a.id.toString(16).toUpperCase().padStart(2, "0");
+        addOption(group, "attr-" + hex, hex + " " + attrName(a.id, a.name));
+      }
+      sel.append(group);
+    } catch (e) {
+      // no attributes
+    }
+  }
+  sel.value = metric;
+  sel.onchange = () => {
+    metric = sel.value;
+    refresh();
+  };
+}
+
+async function refresh() {
+  const series = [];
+  for (let i = 0; i < disks.length; i++) {
+    const d = disks[i];
+    if (!enabled[d.id]) {
+      continue;
+    }
+    const points = prefs.points === 0 ? "all" : String(prefs.points);
+    try {
+      const res = await api("/api/disks/" + encodeURIComponent(d.id) + "/history?metric=" +
+        encodeURIComponent(metric) + "&points=" + points);
+      const data = (res.points || []).map(([ts, v]) => [ts * 1000, v]);
+      if (data.length) {
+        series.push({ label: d.model || d.device, data, color: prefs.colors[i % 64] });
+      }
+    } catch (e) {
+      // skip failed disk
+    }
+  }
+  currentSeries = series;
+  redraw();
+}
+
+function baseOptions() {
+  return {
+    lines: { show: true, lineWidth: 1 },
+    points: { show: false },
+    xaxis: { mode: "time", timeformat: prefs.timeformat, twelveHourClock: false },
+    yaxis: {},
+    legend: { show: true, position: prefs.legend, backgroundOpacity: 0.6 },
+    grid: {
+      hoverable: true,
+      clickable: true,
+      markings: prefs.weekend ? weekendMarking : []
+    },
+    colors: prefs.colors
+  };
+}
+
+function weekendMarking(axes) {
+  return weekendAreas(axes.xaxis);
+}
+
+// weekends in the visible range (from the original Graph.html)
+function weekendAreas(plotarea) {
+  const areas = [];
+  const d = new Date(plotarea.xmin);
+  d.setDate(d.getDate() - ((d.getDay() + 1) % 7));
+  d.setSeconds(0);
+  d.setMinutes(0);
+  d.setHours(0);
+  let i = d.getTime() - d.getTimezoneOffset() * 60 * 1000;
+  do {
+    areas.push({ x1: i, x2: i + 2 * 24 * 60 * 60 * 1000, color: "rgba(0,0,0,0.06)" });
+    i += 7 * 24 * 60 * 60 * 1000;
+  } while (i < plotarea.xmax);
+  return areas;
+}
+
+function redraw() {
+  const options = baseOptions();
+  const overViewOptions = $.extend(true, {}, options, {
+    legend: { show: false },
+    yaxis: { ticks: 2 },
+    xaxis: { ticks: 4 },
+    grid: { hoverable: false, markings: options.grid.markings }
+  });
+  plot = $.plot($("#placeholder"), currentSeries, options);
+  overview = $.plot($("#overview"), currentSeries, overViewOptions);
+  bindSelection(options);
+}
+
+function bindSelection(options) {
+  $("#placeholder").unbind("selected").bind("selected", function (event, area) {
+    plot = $.plot($("#placeholder"), currentSeries,
+      $.extend(true, {}, options, {
+        xaxis: { min: area.x1, max: area.x2 },
+        yaxis: { min: area.y1, max: area.y2 }
+      }));
+    if (internalSelection) {
       return;
     }
-    ctx.fillStyle = s.color;
-    ctx.fillRect(lx, 8, 10, 8);
-    ctx.fillStyle = text;
-    ctx.fillText(s.name, lx + 14, 12);
-    lx += 14 + ctx.measureText(s.name).width + 14;
+    internalSelection = true;
+    overview.setSelection(area);
+    internalSelection = false;
+  });
+  $("#overview").unbind("selected").bind("selected", function (event, area) {
+    if (internalSelection) {
+      return;
+    }
+    internalSelection = true;
+    plot.setSelection(area);
+    internalSelection = false;
   });
 }
 
-function fmtNum(v) {
-  if (Math.abs(v) >= 1000) {
-    return Math.round(v).toLocaleString();
-  }
-  return Math.round(v * 100) / 100;
+function showTooltip(x, y, contents) {
+  const str = "" + contents;
+  $("<div id='tooltip'>" + contents + "</div>").css({
+    top: y - 30,
+    left: Math.max(0, x - str.length * 5)
+  }).appendTo("body").fadeIn(150);
 }
+
+function bindHover() {
+  $("#placeholder").bind("plothover", function (event, pos, item) {
+    if (item) {
+      if (previousPoint !== item.datapoint) {
+        previousPoint = item.datapoint;
+        $("#tooltip").remove();
+        showTooltip(item.pageX, item.pageY, Math.round(item.datapoint[1] * 100) / 100);
+      }
+    } else {
+      $("#tooltip").remove();
+      previousPoint = null;
+    }
+  });
+}
+
+function bindToolbar() {
+  document.getElementById("AllOn").addEventListener("click", (e) => {
+    e.preventDefault();
+    disks.forEach((d) => {
+      enabled[d.id] = true;
+    });
+    buildToggles();
+    refresh();
+  });
+  document.getElementById("AllOff").addEventListener("click", (e) => {
+    e.preventDefault();
+    disks.forEach((d) => {
+      enabled[d.id] = false;
+    });
+    buildToggles();
+    refresh();
+  });
+  document.getElementById("Refresh").addEventListener("click", (e) => {
+    e.preventDefault();
+    refresh();
+  });
+  document.getElementById("Customize").addEventListener("click", (e) => {
+    e.preventDefault();
+    window.parent.postMessage({ type: "cdifnos-open-option" }, "*");
+  });
+}
+
+async function init() {
+  if (typeof setLang === "function") {
+    setLang(localStorage.getItem("cdifnos.lang") || LANG);
+  }
+  applyBackground();
+  buildToolbar();
+  bindToolbar();
+  bindHover();
+  const wanted = new URLSearchParams(location.search).get("disk");
+  try {
+    const resp = await api("/api/disks");
+    disks = resp.disks || [];
+  } catch (e) {
+    disks = [];
+  }
+  disks.forEach((d) => {
+    enabled[d.id] = true;
+  });
+  if (wanted && disks.some((d) => d.id === wanted)) {
+    disks.forEach((d) => {
+      enabled[d.id] = d.id === wanted;
+    });
+  }
+  buildToggles();
+  await buildSelect();
+  await refresh();
+  window.addEventListener("resize", () => redraw());
+  window.addEventListener("message", (e) => {
+    if (e.data && e.data.type === "cdifnos-prefs-changed") {
+      prefs = loadPrefs();
+      applyBackground();
+      buildToolbar();
+      buildToggles();
+      refresh();
+    }
+  });
+}
+
+init();

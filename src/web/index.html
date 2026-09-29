@@ -8,39 +8,63 @@
 </head>
 <body>
 <div class="cdi">
-  <div class="menubar" id="menubar"></div>
-  <div class="diskbar">
-    <button id="preDisk" class="pager hidden" type="button">&#9664;</button>
-    <div class="tabs" id="tabs"></div>
-    <button id="nextDisk" class="pager hidden" type="button">&#9654;</button>
-  </div>
-  <div class="workarea">
-    <div class="left">
-      <div class="box health unknown" id="health">—</div>
-      <div class="box temp" id="temp">—</div>
-      <div class="box life" id="life">—</div>
+    <div class="menubar" id="menubar"></div>
+    <div class="main-area" id="mainArea">
+      <div class="geo-char"></div>
+      <div class="content-col">
+        <div class="diskbar">
+          <button id="preDisk" class="pager hidden" type="button">&#9664;</button>
+          <div class="tabs" id="tabs"></div>
+          <button id="nextDisk" class="pager hidden" type="button">&#9654;</button>
+        </div>
+        <div class="workarea">
+          <div class="left">
+            <div class="box health unknown" id="health">—</div>
+            <div class="box temp" id="temp">—</div>
+            <div class="box life" id="life">—</div>
+          </div>
+          <div class="right">
+            <div class="headline" id="headline"></div>
+            <table class="meta"><tbody id="meta"></tbody></table>
+          </div>
+          <img id="themeLogo" class="theme-logo hidden" alt="">
+        </div>
+        <div class="geo" id="geo">
+          <div class="geo-disks" id="geoDisks"></div>
+          <div class="geo-titlebar">
+            <button id="geoPreDisk" class="geo-pager hidden" type="button">&#9664;</button>
+            <div class="geo-model" id="geoModel"></div>
+            <button id="geoNextDisk" class="geo-pager hidden" type="button">&#9654;</button>
+          </div>
+          <div class="geo-info">
+            <div class="geo-life" id="geoLife"></div>
+            <div class="geo-col geo-col-labels-left" id="geoLabelsLeft"></div>
+            <div class="geo-col geo-col-values-left" id="geoValuesLeft"></div>
+            <div class="geo-col geo-col-labels-right" id="geoLabelsRight"></div>
+            <div class="geo-col geo-col-values-right" id="geoValuesRight"></div>
+            <div class="geo-status-label" id="geoStatusLabel"></div>
+            <div class="geo-status-art" id="geoStatusArt"></div>
+            <div class="geo-temp-label" id="geoTempLabel"></div>
+            <div class="geo-temp-art" id="geoTempArt"></div>
+          </div>
+        </div>
+        <div class="banner hidden" id="banner">
+          <span id="bannerText"></span>
+          <button id="bannerClose" type="button">×</button>
+        </div>
+        <div class="statusline">
+          <span id="status" class="status"></span>
+          <span id="toast" class="toast"></span>
+          <span id="alarmIndicator" class="alarm-ind hidden">&#9888;</span>
+        </div>
+        <div class="attrwrap" id="attrwrap">
+          <table class="attrs">
+            <thead><tr id="attrhead"></tr></thead>
+            <tbody id="attrs"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
-    <div class="right">
-      <div class="headline" id="headline"></div>
-      <table class="meta"><tbody id="meta"></tbody></table>
-    </div>
-    <img id="themeLogo" class="theme-logo hidden" alt="">
-  </div>
-  <div class="banner hidden" id="banner">
-    <span id="bannerText"></span>
-    <button id="bannerClose" type="button">×</button>
-  </div>
-  <div class="statusline">
-    <span id="status" class="status"></span>
-    <span id="toast" class="toast"></span>
-    <span id="alarmIndicator" class="alarm-ind hidden">&#9888;</span>
-  </div>
-  <div class="attrwrap" id="attrwrap">
-    <table class="attrs">
-      <thead><tr id="attrhead"></tr></thead>
-      <tbody id="attrs"></tbody>
-    </table>
-  </div>
 </div>
 
 <dialog id="dlgSelftest">
@@ -75,15 +99,13 @@
   <div class="dlg-actions"><button class="close" type="button"></button></div>
 </dialog>
 
-<dialog id="dlgGraph" class="wide">
-  <h3 id="grTitle"></h3>
-  <div class="dlg-row">
-    <select id="grMetric"></select>
-    <select id="grPoints"></select>
-    <button id="grDraw" type="button"></button>
-  </div>
-  <div id="grDisks" class="checks"></div>
-  <div class="graphwrap"><canvas id="grCanvas"></canvas></div>
+<dialog id="dlgGraph" class="wide iframe-dialog">
+  <iframe id="grFrame" src="about:blank" title="Graph"></iframe>
+  <div class="dlg-actions"><button class="close" type="button"></button></div>
+</dialog>
+
+<dialog id="dlgOption" class="wide iframe-dialog">
+  <iframe id="optFrame" src="option.html" title="Graph Options"></iframe>
   <div class="dlg-actions"><button class="close" type="button"></button></div>
 </dialog>
 
@@ -111,10 +133,10 @@
 <input id="themeFile" type="file" accept=".zip" hidden>
 
 <script src="i18n.js"></script>
-<script src="graph.js"></script>
 <script src="menubar.js"></script>
 <script src="theme.js"></script>
 <script src="snapshot.js"></script>
 <script src="app.js"></script>
+<script type="module" src="platform.js"></script>
 </body>
 </html>

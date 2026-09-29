@@ -37,7 +37,8 @@ func TestReadHistory(t *testing.T) {
 	if err := os.MkdirAll(historyDir(dir), 0755); err != nil {
 		t.Fatal(err)
 	}
-	lines := "{\"t\":100,\"temperature\":30,\"status\":\"good\"}\n{\"t\":200,\"temperature\":35,\"status\":\"good\"}\n"
+	lines := "{\"t\":100,\"temperature\":30,\"status\":\"good\",\"a\":{\"05\":100,\"C2\":30}}\n" +
+		"{\"t\":200,\"temperature\":35,\"status\":\"good\",\"a\":{\"05\":99,\"C2\":35}}\n"
 	if err := os.WriteFile(historyPath(dir, "x"), []byte(lines), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,17 @@ func TestReadHistory(t *testing.T) {
 	if !ok || len(pts) != 1 || pts[0][0] != 200 || pts[0][1] != 35 {
 		t.Fatalf("points = %v ok=%v", pts, ok)
 	}
+	attrPts, ok := readHistory(dir, "x", "attr-05", 0)
+	if !ok || len(attrPts) != 2 || attrPts[1][1] != 99 {
+		t.Fatalf("attr points = %v ok=%v", attrPts, ok)
+	}
+	if _, ok := readHistory(dir, "x", "attr-5", 0); !ok {
+		t.Fatal("single digit attribute id must map to padded key")
+	}
 	if _, ok := readHistory(dir, "x", "bogus", 0); ok {
 		t.Error("expected unknown metric to be rejected")
+	}
+	if _, ok := readHistory(dir, "x", "attr-zz", 0); ok {
+		t.Error("expected invalid attr metric to be rejected")
 	}
 }

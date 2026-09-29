@@ -41,6 +41,9 @@ type themeManifest struct {
 	CSS        string            `json:"css,omitempty"`
 	Images     map[string]string `json:"images,omitempty"`
 	FrameCount map[string]int    `json:"frame_count,omitempty"`
+	// FrameDir marks slots whose sprite frames live in another theme dir
+	// (fallback chain); absent = frames are relative to this theme.
+	FrameDir map[string]string `json:"frame_dir,omitempty"`
 }
 
 var builtinThemes = []themeInfo{
@@ -100,6 +103,147 @@ func listThemes(dataDir string) []themeInfo {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// readThemeManifest loads themes/<id>/theme.json.
+func readThemeManifest(dataDir, id string) (themeManifest, bool) {
+	raw, err := os.ReadFile(filepath.Join(themesDir(dataDir), id, "theme.json"))
+	if err != nil {
+		return themeManifest{}, false
+	}
+	var m themeManifest
+	if json.Unmarshal(raw, &m) != nil {
+		return themeManifest{}, false
+	}
+	return m, true
+}
+
+// lookupThemeDir resolves a theme name case-insensitively (theme.ini parent
+// names are mixed case, imported dir ids are lowercase).
+func lookupThemeDir(dataDir, name string) (string, bool) {
+	entries, err := os.ReadDir(themesDir(dataDir))
+	if err != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.EqualFold(e.Name(), name) &&
+			!strings.HasPrefix(e.Name(), ".") && !strings.Contains(e.Name(), ".old-") {
+			return e.Name(), true
+		}
+	}
+	return "", false
+}
+
+// themeParents reads ParentTheme1/2 from the pack's theme.ini (CDI's image
+// fallback chain, DialogFx.cpp IP()).
+func themeParents(dataDir, id string) []string {
+	raw, err := os.ReadFile(filepath.Join(themesDir(dataDir), id, "theme.ini"))
+	if err != nil {
+		return nil
+	}
+	ini := parseINI(raw)
+	var out []string
+	for _, key := range []string{"ParentTheme1", "ParentTheme2"} {
+		if v := ini.get("Info", key); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// pickAutoFallback is the "auto" fallback: the imported theme with the most
+// image slots (the complete pack), ties broken by id.
+func pickAutoFallback(dataDir, activeID string, used map[string]bool) string {
+	entries, err := os.ReadDir(themesDir(dataDir))
+	if err != nil {
+		return ""
+	}
+	best, bestN := "", -1
+	for _, e := range entries {
+		id := e.Name()
+		if !e.IsDir() || strings.HasPrefix(id, ".") || strings.Contains(id, ".old-") ||
+			id == activeID || used[id] || isBuiltinTheme(id) {
+			continue
+		}
+		m, ok := readThemeManifest(dataDir, id)
+		if !ok {
+			continue
+		}
+		if n := len(m.Images); n > bestN || (n == bestN && id < best) {
+			best, bestN = id, n
+		}
+	}
+	return best
+}
+
+// mergeThemeManifest resolves the active theme's manifest with CDI's image
+// fallback chain: active -> ParentTheme1/2 -> fallback ("none"/"auto"/id).
+// Slots provided by other themes become absolute "/themes/<id>/<file>" URLs;
+// framed slots also carry their frame_count/frame_dir.
+func mergeThemeManifest(dataDir, id, fallback string) (themeManifest, error) {
+	out, ok := readThemeManifest(dataDir, id)
+	if !ok {
+		return themeManifest{}, fmt.Errorf("theme %s not found", id)
+	}
+	used := map[string]bool{id: true}
+	providers := []string{id}
+	for _, p := range themeParents(dataDir, id) {
+		if pid, ok := lookupThemeDir(dataDir, p); ok && !used[pid] {
+			providers = append(providers, pid)
+			used[pid] = true
+		}
+	}
+	switch fallback {
+	case "", "none":
+	case "auto":
+		if bid := pickAutoFallback(dataDir, id, used); bid != "" {
+			providers = append(providers, bid)
+			used[bid] = true
+		}
+	default:
+		if pid, ok := lookupThemeDir(dataDir, fallback); ok && !used[pid] {
+			providers = append(providers, pid)
+			used[pid] = true
+		}
+	}
+
+	for _, pid := range providers[1:] {
+		m, ok := readThemeManifest(dataDir, pid)
+		if !ok {
+			continue
+		}
+		for k, v := range m.Vars {
+			if out.Vars == nil {
+				out.Vars = map[string]string{}
+			}
+			if _, ok := out.Vars[k]; !ok {
+				out.Vars[k] = v
+			}
+		}
+		for slot, file := range m.Images {
+			if _, ok := out.Images[slot]; ok {
+				continue
+			}
+			if out.Images == nil {
+				out.Images = map[string]string{}
+			}
+			out.Images[slot] = "/themes/" + pid + "/" + file
+			if n := m.FrameCount[slot]; n > 0 {
+				if out.FrameCount == nil {
+					out.FrameCount = map[string]int{}
+				}
+				out.FrameCount[slot] = n
+				if out.FrameDir == nil {
+					out.FrameDir = map[string]string{}
+				}
+				out.FrameDir[slot] = "/themes/" + pid
+			}
+		}
+	}
+	if len(out.FrameDir) == 0 {
+		out.FrameDir = nil
+	}
+	return out, nil
 }
 
 // importThemes imports one or more theme folders from a zip. Multi-folder zips
@@ -505,9 +649,9 @@ func themeIniVars(ini iniFile) map[string]string {
 		}
 	}
 	set("labeltext", "--cdi-text")
-	set("buttontext", "--cdi-text")
 	set("listtext1", "--cdi-text")
 	set("listtext2", "--cdi-text")
+	set("buttontext", "--cdi-button-text")
 	set("listbk1", "--cdi-panel")
 	set("listbk2", "--cdi-bg")
 	set("listline2", "--cdi-border")
@@ -526,10 +670,11 @@ func themeIniVars(ini iniFile) map[string]string {
 // slotForBase maps CDI asset names (already stripped of the -<zoom> suffix)
 // onto our image slots, with a priority so specific assets beat generic ones.
 // CDI asset families:
-//   diskGood*        top disk-button art
-//   diskStatusGood*  health block art
-//   SDdiskStatusGood* life block art
-//   temperatureGood* temperature block art
+//
+//	diskGood*        top disk-button art
+//	diskStatusGood*  health block art
+//	SDdiskStatusGood* life block art
+//	temperatureGood* temperature block art
 func slotForBase(base string) (string, int) {
 	b := strings.ToLower(base)
 	repl := strings.NewReplacer("-", "", "_", "", " ", "", "~", "")
@@ -558,6 +703,11 @@ func slotForBase(base string) (string, int) {
 	case strings.Contains(b, "sddiskstatus"):
 		if class == "" {
 			return "", 0
+		}
+		// CDI's SDdiskStatusGood100 art is a separate slot (full-life variant),
+		// not a clash with SDdiskStatusGood.
+		if strings.Contains(b, "100") {
+			return "sd_" + class + "100", 100
 		}
 		return "sd_" + class, 100
 	case strings.Contains(b, "diskstatus"):

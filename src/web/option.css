@@ -1,0 +1,58 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--cdi-text, #111);
+  background: var(--cdi-bg, #fff);
+  padding: 8px 10px;
+}
+
+#head { font-weight: 700; margin-bottom: 6px; }
+
+#colorGrid { border-collapse: collapse; margin-bottom: 10px; }
+
+#colorGrid td {
+  padding: 1px 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#colorGrid .cellLabel {
+  display: block;
+  font-size: 9px;
+  color: var(--cdi-unknown, #888);
+}
+
+#colorGrid input[type="color"] {
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--cdi-border, #aaa);
+  background: none;
+  cursor: pointer;
+}
+
+#bgRow { display: flex; align-items: center; gap: 6px; margin: 6px 0 10px; }
+#bgRow label { color: var(--cdi-unknown, #888); white-space: nowrap; }
+#bgRow input {
+  flex: 1;
+  min-width: 220px;
+  padding: 2px 4px;
+  font: inherit;
+  border: 1px solid var(--cdi-border, #aaa);
+  background: var(--cdi-panel, #fff);
+  color: var(--cdi-text, #111);
+}
+
+button {
+  padding: 2px 12px;
+  font: inherit;
+  background: var(--cdi-panel, #fff);
+  color: var(--cdi-text, #111);
+  border: 1px solid var(--cdi-border, #aaa);
+  cursor: pointer;
+}
+button:hover { border-color: var(--cdi-accent, #206ec8); }
+
+.actions { display: flex; justify-content: flex-end; gap: 8px; }

@@ -3,12 +3,11 @@
 const $ = (id) => document.getElementById(id);
 
 const PAGE_SIZE = 12;
+const GEO_PAGE_SIZE = 8;
 const INTERVALS = [10, 60, 180, 300, 600, 1800, 3600];
 const RAW_FORMATS = ["hex", "dec", "byte2", "byte1"];
 const ZOOMS = ["100", "125", "150", "200", "250", "300", "auto"];
 const FONT_SIZES = ["11", "12", "13", "14"];
-const METRICS = ["temperature", "life", "power_on_hours", "power_on_count", "reallocated",
-  "realloc_events", "pending", "uncorrectable", "host_reads", "host_writes"];
 
 const state = {
   disks: [],
@@ -18,6 +17,7 @@ const state = {
   error: null,
   version: null,
   page: 0,
+  geoPage: 0,
   settings: null,
   alarms: [],
   ui: {
@@ -172,9 +172,139 @@ function renderTabs() {
 
 function selectDisk(id) {
   state.id = id;
-  state.page = Math.floor(Math.max(0, visibleDisks().findIndex((d) => d.id === id)) / PAGE_SIZE);
+  const list = visibleDisks();
+  const idx = Math.max(0, list.findIndex((d) => d.id === id));
+  state.page = Math.floor(idx / PAGE_SIZE);
+  state.geoPage = Math.floor(idx / GEO_PAGE_SIZE);
   localStorage.setItem("cdifnos.id", id);
   refresh();
+}
+
+// ---------- CDI Shizuku geometry (active when the theme ships art) ----------
+
+function setGeometryMode() {
+  document.body.classList.toggle("cdi-geometry", Theme.hasArt());
+}
+
+function geoRows(boxId, items, cell) {
+  const box = $(boxId);
+  box.textContent = "";
+  for (const text of items) {
+    const div = document.createElement("div");
+    div.className = "geo-row" + (cell ? " geo-cell" : "");
+    div.textContent = text;
+    box.append(div);
+  }
+}
+
+function setGeoArt(el, src, text, px) {
+  el.textContent = "";
+  el.classList.toggle("has-img", !!src);
+  if (src) {
+    const img = document.createElement("img");
+    img.src = src;
+    img.alt = "";
+    el.append(img);
+  }
+  const span = document.createElement("span");
+  span.className = "overlay";
+  span.style.fontSize = px + "px";
+  span.textContent = text;
+  el.append(span);
+}
+
+function renderGeoDisks() {
+  const list = visibleDisks();
+  const pages = Math.max(1, Math.ceil(list.length / GEO_PAGE_SIZE));
+  state.geoPage = Math.min(Math.max(0, state.geoPage), pages - 1);
+  const slice = list.slice(state.geoPage * GEO_PAGE_SIZE, (state.geoPage + 1) * GEO_PAGE_SIZE);
+  const box = $("geoDisks");
+  box.textContent = "";
+  for (const d of slice) {
+    const cls = d.error ? "unknown" : healthClass(d.health);
+    const active = d.id === state.id;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "geo-disk";
+    b.title = d.model || d.device;
+    const src = geoIconSrc(cls, active ? 3 : 0);
+    if (src) {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "";
+      b.append(img);
+      b.addEventListener("mouseenter", () => {
+        const u = geoIconSrc(cls, 1);
+        if (u) img.src = u;
+      });
+      b.addEventListener("mouseleave", () => {
+        const u = geoIconSrc(cls, active ? 3 : 0);
+        if (u) img.src = u;
+      });
+    }
+    const stack = document.createElement("span");
+    stack.className = "stack";
+    const lines = [
+      ["t1", d.error ? t("unknown") : t(cls)],
+      ["t2", fmtTemp(d.temperature)],
+      ["t3", (d.device || "").replace(/^\/dev\//, "")]
+    ];
+    for (const [c, v] of lines) {
+      const s = document.createElement("span");
+      s.className = c;
+      s.textContent = v;
+      stack.append(s);
+    }
+    b.append(stack);
+    b.addEventListener("click", () => selectDisk(d.id));
+    box.append(b);
+  }
+  const showPager = list.length > GEO_PAGE_SIZE;
+  $("geoPreDisk").classList.toggle("hidden", !showPager);
+  $("geoNextDisk").classList.toggle("hidden", !showPager);
+}
+
+function renderGeoInfo() {
+  const d = currentDisk();
+  const dash = "--";
+  $("geoModel").textContent = d
+    ? (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes)
+    : (state.error || t("no_disks"));
+  const serial = d && d.serial ? (state.ui.hideSerial ? "********" : d.serial) : dash;
+  geoRows("geoLabelsLeft", [t("firmware"), t("serial"), t("interface"), t("transfer_mode"), t("drive_map"), t("standard"), t("feature")], false);
+  geoRows("geoValuesLeft", d
+    ? [d.firmware || dash, serial, d.protocol || dash, d.transfer_mode || dash, d.device || dash,
+       d.standard || dash, d.features && d.features.length ? d.features.join(", ") : dash]
+    : [dash, dash, dash, dash, dash, dash, dash], true);
+  geoRows("geoLabelsRight", [t("buffer_size"), t("nv_cache"), t("rotation"), t("power_on_count"), t("power_on")], false);
+  const rot = !d || d.rotation_rate <= 0 ? (d && d.is_ssd ? t("ssd") : dash) : d.rotation_rate + " " + t("rpm");
+  geoRows("geoValuesRight", d
+    ? [dash, dash, rot, fmtNum(d.power_on_count),
+       d.power_on_hours == null ? dash : fmtNum(d.power_on_hours) + " " + t("hours")]
+    : [dash, dash, dash, dash, dash], true);
+
+  const cls = d ? healthClass(d.health) : "unknown";
+  const lifePct = d && d.life != null ? d.life : null;
+  $("geoStatusLabel").textContent = t("health");
+  // CDI Shizuku puts the life percentage in the health status text:
+  // m_DiskStatus.Format("%s (%d %%)") — DiskInfoDlgUpdate.cpp.
+  const statusText = d ? t(cls) + (lifePct == null ? "" : " (" + lifePct + " %)") : dash;
+  setGeoArt($("geoStatusArt"), d ? themeImg("status_" + cls, "disk_" + cls) : "", statusText, 16);
+  const tempCls = !d || d.temperature == null ? "unknown" : (d.temperature >= (d.alarm_temp || 99) ? "bad" : "good");
+  $("geoTempLabel").textContent = t("temperature");
+  setGeoArt($("geoTempArt"), d ? themeImg("temp_" + tempCls) : "", d ? fmtTemp(d.temperature) : dash, 18);
+
+  const lifeBox = $("geoLife");
+  lifeBox.textContent = "";
+  // CDI swaps in the "100" art variant for a full-life good disk.
+  const sdSlot = lifePct === 100 && cls === "good" ? "sd_good100" : "sd_" + cls;
+  const lifeSrc = d ? themeImg(sdSlot, "sd_" + cls) : "";
+  if (lifeSrc) {
+    const img = document.createElement("img");
+    img.src = lifeSrc;
+    img.alt = "";
+    lifeBox.append(img);
+  }
 }
 
 function metaRow(c1, v1, c2, v2) {
@@ -202,6 +332,8 @@ function applyThemeImages() {
   const next = Theme.frameUrl("next", 0) || Theme.images.next;
   $("preDisk").innerHTML = pre ? `<img src="${pre}" alt="">` : "&#9664;";
   $("nextDisk").innerHTML = next ? `<img src="${next}" alt="">` : "&#9654;";
+  $("geoPreDisk").innerHTML = pre ? `<img src="${pre}" alt="">` : "&#9664;";
+  $("geoNextDisk").innerHTML = next ? `<img src="${next}" alt="">` : "&#9654;";
 }
 
 function themeImg(...slots) {
@@ -217,6 +349,21 @@ function themeImg(...slots) {
 // (CDI sprite strip order, CommonFx.h).
 function tabIconSrc(cls, frame) {
   for (const slot of ["disk_" + cls + "_mini", "disk_" + cls]) {
+    const u = Theme.frameUrl(slot, frame);
+    if (u) {
+      return u;
+    }
+    if (frame === 0 && Theme.images[slot]) {
+      return Theme.images[slot];
+    }
+  }
+  return "";
+}
+
+// geoIconSrc is for the 84x48 geometry buttons: full-size art first, the
+// 42x48 mini art (meant for the small classic tabs) would blur when stretched.
+function geoIconSrc(cls, frame) {
+  for (const slot of ["disk_" + cls, "disk_" + cls + "_mini"]) {
     const u = Theme.frameUrl(slot, frame);
     if (u) {
       return u;
@@ -389,8 +536,14 @@ async function refresh() {
     if (!list.some((d) => d.id === state.id)) {
       state.id = list.length ? list[0].id : null;
     }
-    renderTabs();
-    renderHead();
+    setGeometryMode();
+    if (document.body.classList.contains("cdi-geometry")) {
+      renderGeoDisks();
+      renderGeoInfo();
+    } else {
+      renderTabs();
+      renderHead();
+    }
     state.attrs = [];
     const d = currentDisk();
     if (d && !d.error) {
@@ -578,6 +731,7 @@ async function importThemeFile(file) {
     if (first) {
       await Theme.apply(first.id);
     }
+    setGeometryMode();
     applyThemeImages();
     const count = (res.themes || []).length;
     if (res.skipped && res.skipped.length) {
@@ -601,6 +755,7 @@ async function deleteTheme(id) {
     await Theme.remove(id);
     if (Theme.current() === id) {
       await Theme.apply("classic");
+      setGeometryMode();
       applyThemeImages();
     }
     toast(t("saved"));
@@ -623,11 +778,21 @@ function openAbout() {
   p3.innerHTML = '<a href="https://crystalmark.info/en/software/crystaldiskinfo/" target="_blank" rel="noopener">CrystalDiskInfo</a> · ' +
     '<a href="https://www.smartmontools.org/" target="_blank" rel="noopener">smartmontools</a> · ' +
     '<a href="https://en.wikipedia.org/wiki/S.M.A.R.T." target="_blank" rel="noopener">S.M.A.R.T.</a>';
-  box.append(p1, p2, p3);
+  const p4 = document.createElement("p");
+  p4.textContent = t("about_graph");
+  box.append(p1, p2, p3, p4);
   $("dlgAbout").showModal();
 }
 
 // ---------- menus ----------
+
+async function setFallbackTheme(id) {
+  localStorage.setItem("cdifnos.fallback", id);
+  await Theme.apply(Theme.current());
+  setGeometryMode();
+  applyThemeImages();
+  refresh();
+}
 
 function buildMenus() {
   const themeItems = Theme.list.map((ti) => ({
@@ -635,6 +800,7 @@ function buildMenus() {
     checked: () => Theme.current() === ti.id,
     action: async () => {
       await Theme.apply(ti.id);
+      setGeometryMode();
       applyThemeImages();
       refresh();
     }
@@ -671,6 +837,7 @@ function buildMenus() {
         { label: t("rescan") + " (F6)", action: rescanNow },
         { separator: true },
         { label: t("graph"), action: openGraph },
+        { label: t("g_options"), action: openGraphOptions },
         { separator: true },
         { label: t("hide_serial_number"), checked: () => state.ui.hideSerial, action: () => togglePref("hideSerial", renderHead) },
         {
@@ -728,6 +895,24 @@ function buildMenus() {
       label: t("menu_theme"),
       items: [
         ...themeItems,
+        { separator: true },
+        {
+          label: t("fallback_theme"),
+          items: [
+            { label: t("none"), checked: () => Theme.fallback() === "none", action: () => setFallbackTheme("none") },
+            { label: t("auto"), checked: () => Theme.fallback() === "auto", action: () => setFallbackTheme("auto") },
+            ...(importedThemes.length
+              ? [
+                  { separator: true },
+                  ...importedThemes.map((ti) => ({
+                    label: ti.name,
+                    checked: () => Theme.fallback() === ti.id,
+                    action: () => setFallbackTheme(ti.id)
+                  }))
+                ]
+              : [])
+          ]
+        },
         { separator: true },
         {
           label: t("zoom"),
@@ -905,42 +1090,15 @@ async function aamApmAction(kind, value) {
 // ---------- dialogs: graph ----------
 
 function openGraph() {
-  buildGraphDisks();
+  const d = currentDisk();
+  const url = "graph.html?disk=" + encodeURIComponent(d ? d.id : "") +
+    "&theme=" + encodeURIComponent(Theme.current());
+  $("grFrame").src = url;
   $("dlgGraph").showModal();
-  drawGraphNow();
 }
 
-function buildGraphDisks() {
-  const box = $("grDisks");
-  box.textContent = "";
-  for (const d of visibleDisks()) {
-    const label = document.createElement("label");
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.value = d.id;
-    cb.checked = d.id === state.id;
-    const span = document.createElement("span");
-    span.textContent = d.model || d.device;
-    label.append(cb, span);
-    box.append(label);
-  }
-}
-
-async function drawGraphNow() {
-  const metric = $("grMetric").value;
-  const points = $("grPoints").value;
-  const ids = [...$("grDisks").querySelectorAll("input:checked")].map((c) => c.value);
-  const series = [];
-  for (const id of ids) {
-    const d = state.disks.find((x) => x.id === id);
-    try {
-      const res = await api("/api/disks/" + encodeURIComponent(id) + "/history?metric=" + metric + "&points=" + points);
-      series.push({ name: d ? (d.model || d.device) : id, points: res.points || [] });
-    } catch (e) {
-      // skip failed series
-    }
-  }
-  drawGraph($("grCanvas"), series);
+function openGraphOptions() {
+  $("dlgOption").showModal();
 }
 
 // ---------- dialogs: alarms ----------
@@ -1121,8 +1279,6 @@ function applyStaticTexts() {
   $("aaApmSet").textContent = t("set");
   $("aaApmOff").textContent = t("off");
   $("aaGet").textContent = t("query");
-  $("grTitle").textContent = t("graph");
-  $("grDraw").textContent = t("draw");
   $("seTitle").textContent = t("settings");
   $("seSave").textContent = t("apply");
   $("alTitle").textContent = t("alarms");
@@ -1142,29 +1298,20 @@ function initControls() {
     stType.append(o);
   }
 
-  const grMetric = $("grMetric");
-  for (const m of METRICS) {
-    const o = document.createElement("option");
-    o.value = m;
-    o.textContent = t("m_" + m);
-    grMetric.append(o);
-  }
-  const grPoints = $("grPoints");
-  for (const p of [["100", "100"], ["500", "500"], ["2000", "2000"], ["all", t("all")]]) {
-    const o = document.createElement("option");
-    o.value = p[0];
-    o.textContent = p[1];
-    grPoints.append(o);
-  }
-  grPoints.value = "500";
-
-  $("preDisk").onclick = () => {
-    state.page--;
+  $("preDisk").onclick = () => {    state.page--;
     renderTabs();
   };
   $("nextDisk").onclick = () => {
     state.page++;
     renderTabs();
+  };
+  $("geoPreDisk").onclick = () => {
+    state.geoPage--;
+    renderGeoDisks();
+  };
+  $("geoNextDisk").onclick = () => {
+    state.geoPage++;
+    renderGeoDisks();
   };
   $("stStart").onclick = () => selftestAction("self-test");
   $("stAbort").onclick = () => selftestAction("abort-test");
@@ -1173,7 +1320,6 @@ function initControls() {
   $("aaApmSet").onclick = () => aamApmAction("apm", $("aaApm").value.trim());
   $("aaApmOff").onclick = () => aamApmAction("apm", "off");
   $("aaGet").onclick = aamApmQuery;
-  $("grDraw").onclick = drawGraphNow;
   $("seSave").onclick = saveSettings;
   $("bannerClose").onclick = () => {
     const last = state.alarms[state.alarms.length - 1];
@@ -1186,8 +1332,21 @@ function initControls() {
     $("themeFile").value = "";
     if (f) importThemeFile(f);
   });
-  window.addEventListener("resize", () => {
-    if ($("dlgGraph").open) drawGraphNow();
+  window.addEventListener("message", (e) => {
+    const msg = e.data;
+    if (!msg || typeof msg !== "object") {
+      return;
+    }
+    if (msg.type === "cdifnos-open-option") {
+      $("dlgOption").showModal();
+    } else if (msg.type === "cdifnos-close-option") {
+      $("dlgOption").close();
+    } else if (msg.type === "cdifnos-option-saved") {
+      const f = $("grFrame");
+      if (f && f.contentWindow) {
+        f.contentWindow.postMessage({ type: "cdifnos-prefs-changed" }, "*");
+      }
+    }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "F5") {
@@ -1209,6 +1368,7 @@ async function init() {
   initControls();
   await Theme.loadList();
   await Theme.apply(Theme.current());
+  setGeometryMode();
   applyThemeImages();
   await loadSettings();
   buildMenus();
