@@ -494,7 +494,7 @@ function renderAttrs() {
     tr.append(led);
     const cells = [
       a.id.toString(16).toUpperCase().padStart(2, "0"),
-      attrName(a.id, a.name),
+      attrName(a.id, a.name, (currentDisk() || {}).is_ssd),
       a.current,
       a.worst,
       a.threshold,

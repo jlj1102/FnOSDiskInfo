@@ -23,6 +23,24 @@ async function snapshotMain() {
   const visible = (el) => el.getClientRects().length > 0;
   const insideRoot = (el) => root.contains(el);
 
+  // The attribute table scrolls inside #attrwrap; scrolled-out rows must not
+  // bleed over the panels above (or below), so clip everything that lives in
+  // there to the wrap's viewport.
+  const clipEl = document.getElementById("attrwrap");
+  const clipRect = clipEl ? clipEl.getBoundingClientRect() : null;
+  const attrClip = (el, draw) => {
+    if (!clipRect || !clipEl.contains(el)) {
+      draw();
+      return;
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clipRect.left - rect.left, clipRect.top - rect.top, clipRect.width, clipRect.height);
+    ctx.clip();
+    draw();
+    ctx.restore();
+  };
+
   // 1. main-area backdrop (theme art, cover-fitted like the CSS)
   const mainEl = document.getElementById("mainArea");
   if (mainEl) {
@@ -55,15 +73,17 @@ async function snapshotMain() {
       const x = r.left - rect.left;
       const y = r.top - rect.top;
       const bgc = st.backgroundColor;
-      if (bgc && bgc !== "rgba(0, 0, 0, 0)" && bgc !== "transparent") {
-        ctx.fillStyle = bgc;
-        ctx.fillRect(x, y, r.width, r.height);
-      }
-      if (st.borderTopWidth !== "0px" && st.borderTopStyle !== "none") {
-        ctx.strokeStyle = st.borderTopColor;
-        ctx.lineWidth = parseFloat(st.borderTopWidth) || 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, r.width - 1, r.height - 1);
-      }
+      attrClip(el, () => {
+        if (bgc && bgc !== "rgba(0, 0, 0, 0)" && bgc !== "transparent") {
+          ctx.fillStyle = bgc;
+          ctx.fillRect(x, y, r.width, r.height);
+        }
+        if (st.borderTopWidth !== "0px" && st.borderTopStyle !== "none") {
+          ctx.strokeStyle = st.borderTopColor;
+          ctx.lineWidth = parseFloat(st.borderTopWidth) || 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, r.width - 1, r.height - 1);
+        }
+      });
     }
   }
 
@@ -77,19 +97,20 @@ async function snapshotMain() {
       const st = getComputedStyle(el);
       img._rect = { x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height };
       img._opacity = st.opacity;
+      img._el = el;
       return img;
     }));
   }
   for (const img of await Promise.all(imgs)) {
     if (!img || !img._rect) continue;
-    ctx.globalAlpha = Number(img._opacity) || 1;
-    ctx.drawImage(img, img._rect.x, img._rect.y, img._rect.w, img._rect.h);
-    ctx.globalAlpha = 1;
+    attrClip(img._el, () => {
+      ctx.globalAlpha = Number(img._opacity) || 1;
+      ctx.drawImage(img, img._rect.x, img._rect.y, img._rect.w, img._rect.h);
+      ctx.globalAlpha = 1;
+    });
   }
 
   // 4. text leaves
-  const clipEl = document.getElementById("attrwrap");
-  const clip = clipEl ? clipEl.getBoundingClientRect() : null;
   for (const el of root.querySelectorAll("*")) {
     if (!insideRoot(el) || !visible(el)) continue;
     let text = "";
@@ -101,8 +122,8 @@ async function snapshotMain() {
     text = text.replace(/\s+/g, " ").trim();
     if (!text) continue;
     const r = el.getBoundingClientRect();
-    if (clip && clipEl.contains(el) && (r.bottom < clip.top || r.top > clip.bottom)) {
-      continue; // scrolled out of the attribute table
+    if (clipRect && clipEl.contains(el) && (r.bottom < clipRect.top || r.top > clipRect.bottom)) {
+      continue; // fully scrolled out of the attribute table
     }
     const st = getComputedStyle(el);
     ctx.fillStyle = st.color;
@@ -112,16 +133,18 @@ async function snapshotMain() {
     const y = r.top - rect.top;
     const padL = parseFloat(st.paddingLeft) || 0;
     const padR = parseFloat(st.paddingRight) || 0;
-    if (st.textAlign === "right") {
-      ctx.textAlign = "right";
-      ctx.fillText(text, x + r.width - padR, y + r.height / 2);
-    } else if (st.textAlign === "center") {
-      ctx.textAlign = "center";
-      ctx.fillText(text, x + r.width / 2, y + r.height / 2);
-    } else {
-      ctx.textAlign = "left";
-      ctx.fillText(text, x + padL, y + r.height / 2);
-    }
+    attrClip(el, () => {
+      if (st.textAlign === "right") {
+        ctx.textAlign = "right";
+        ctx.fillText(text, x + r.width - padR, y + r.height / 2);
+      } else if (st.textAlign === "center") {
+        ctx.textAlign = "center";
+        ctx.fillText(text, x + r.width / 2, y + r.height / 2);
+      } else {
+        ctx.textAlign = "left";
+        ctx.fillText(text, x + padL, y + r.height / 2);
+      }
+    });
   }
 
   canvas.toBlob((blob) => {

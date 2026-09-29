@@ -1,0 +1,42 @@
+name: Nightly
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+
+      # fnpack is not committed (licensing); fetch the official Windows build
+      - name: Download fnpack
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force tools | Out-Null
+          Invoke-WebRequest https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64 -OutFile tools/fnpack.exe
+
+      - name: Build cdifnos.fpk
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Publish Nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          prerelease: true
+          body: |
+            Automated nightly build of `cdifnos.fpk`.
+
+            Commit: ${{ github.sha }}
+          files: cdifnos.fpk

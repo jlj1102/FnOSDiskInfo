@@ -132,6 +132,18 @@ Decisions that supersede conflicting text below:
   `res/good|caution|bad|unknown.ico`. Save Image (`snapshot.js`) now paints the
   `#mainArea` backdrop (cover-fitted) first and draws images before text, so overlay text
   (disk buttons/health/temp) is not dimmed by the art.
+- v0.5.7: SMART attribute names come from CDI's language packs — `web/attr-i18n.js` is
+  generated from `Language/*.lang` (`[Smart]` 59 + `[SmartSsd]` 21, en/zh-CN/zh-TW/ja, MIT),
+  keys are two-digit hex IDs; `attrName(id, fallback, isSsd)` prefers the SSD table for
+  SSDs and falls back to smartctl's English name. The snapshot painter now clips everything
+  inside `#attrwrap` to its scroll viewport (boxes, LED images, text), so rows scrolled out
+  of the SMART list no longer bleed over the panels above in the exported PNG.
+- v0.6: the built-in "CDI Classic" theme is renamed to `Light` (id stays `classic`);
+  `LICENSE` (MIT) added at the repo root; `.github/workflows/nightly.yml` builds
+  `cdifnos.fpk` on windows-latest (fnpack is Windows-only and stays out of the repo —
+  the workflow downloads the official
+  `https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64` to `tools/fnpack.exe`)
+  and publishes/updates the `nightly` pre-release with the artifact.
 
 ---
 
@@ -761,7 +773,7 @@ Required modes:
 
 ```text
 Follow fnOS
-CrystalDiskInfo Classic
+Light
 Dark
 Custom
 optional CDI-theme import/adapter

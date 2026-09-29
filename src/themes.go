@@ -47,7 +47,7 @@ type themeManifest struct {
 }
 
 var builtinThemes = []themeInfo{
-	{ID: "classic", Name: "CrystalDiskInfo Classic", Builtin: true},
+	{ID: "classic", Name: "Light", Builtin: true},
 	{ID: "dark", Name: "Dark", Builtin: true},
 	{ID: "follow", Name: "Follow fnOS", Builtin: true},
 }
