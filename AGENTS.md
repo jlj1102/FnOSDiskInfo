@@ -121,6 +121,17 @@ Decisions that supersede conflicting text below:
   (big gap under the model title, dead space above the SMART table). Offsets are now
   relative to the info block: life/columns `top: 0`, status/temp art `168`, labels `172`,
   title bar 40px, info height 200px — the geo block ends at CDI's y=288 list start.
+- v0.5.6: SMART table follows CDI's LED model (DiskInfoDlgUpdate.cpp UpdateListCtrl):
+  a leading 16px LED column (`good|caution|bad|unknown`), zebra stripes from the theme
+  ListBk pair, no status text column and no red row tint. Status is computed in
+  `health.go attributeStatus` (temperature always good; 05/C5/C6 below ATA threshold ->
+  bad, raw above the configured caution limit -> caution; CDI's ATA ID ranges only; else
+  good) — `when_failed`/"In_the_past" is deliberately ignored, so e.g. attr BE (Airflow
+  Temp) no longer shows as damaged. LED art: theme slot `led_<status>` (fallback chain
+  applies) or the bundled icons `web/icons/led_*.png`, converted from CDI's MIT-licensed
+  `res/good|caution|bad|unknown.ico`. Save Image (`snapshot.js`) now paints the
+  `#mainArea` backdrop (cover-fitted) first and draws images before text, so overlay text
+  (disk buttons/health/temp) is not dimmed by the art.
 
 ---
 

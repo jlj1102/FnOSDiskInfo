@@ -340,13 +340,15 @@ body {
 .attrs { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .attrs th, .attrs td { padding: 1px 8px; border: 1px solid var(--cdi-border); text-align: left; }
 .attrs th { font-weight: 700; }
-.attrs td:nth-child(1),
-.attrs td:nth-child(3),
+.attrs td.led { padding: 0 4px; text-align: center; }
+.attrs td.led img { display: block; width: 16px; height: 16px; margin: 0 auto; }
+.attrs td:nth-child(2) { text-align: center; }
 .attrs td:nth-child(4),
-.attrs td:nth-child(5) { text-align: right; }
-.attrs td:nth-child(6) { font-family: Consolas, "Courier New", monospace; text-align: right; }
-.attrs tr.bad td { background: rgba(224, 80, 80, 0.18); }
-.attrs tr.caution td { background: rgba(255, 215, 90, 0.2); }
+.attrs td:nth-child(5),
+.attrs td:nth-child(6) { text-align: right; }
+.attrs td:nth-child(7) { font-family: Consolas, "Courier New", monospace; text-align: right; }
+/* CDI's list only stripes rows (ListBk1/ListBk2); status lives in the LED. */
+.attrs tbody tr:nth-child(even) td { background: var(--cdi-bg); }
 
 .attrs .empty {
   padding: 12px;

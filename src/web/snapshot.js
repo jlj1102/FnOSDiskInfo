@@ -1,8 +1,9 @@
 "use strict";
 
 // "Save image": renders the current view into a canvas and downloads a PNG.
-// Generic DOM painter: backgrounds/borders for container elements, text for
-// leaf elements, images for <img> nodes. No dependencies.
+// Generic DOM painter: background art + backgrounds/borders for container
+// elements, then images, then text on top (so overlay text stays readable).
+// No dependencies.
 async function snapshotMain() {
   const root = document.querySelector(".cdi");
   if (!root) return;
@@ -22,8 +23,30 @@ async function snapshotMain() {
   const visible = (el) => el.getClientRects().length > 0;
   const insideRoot = (el) => root.contains(el);
 
-  // 1. containers: background + border
-  const boxSelectors = [".menubar", ".menu-top", ".diskbar", ".tab", ".pager", ".workarea", ".box", ".statusline", ".attrs th", ".attrs td", ".banner"];
+  // 1. main-area backdrop (theme art, cover-fitted like the CSS)
+  const mainEl = document.getElementById("mainArea");
+  if (mainEl) {
+    const st = getComputedStyle(mainEl);
+    const m = /url\(["']?([^"')]+)["']?\)/.exec(st.backgroundImage || "");
+    if (m) {
+      const img = await loadImageSrc(m[1]);
+      if (img) {
+        const r = mainEl.getBoundingClientRect();
+        const x = r.left - rect.left;
+        const y = r.top - rect.top;
+        const scale = Math.max(r.width / img.naturalWidth, r.height / img.naturalHeight);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, r.width, r.height);
+        ctx.clip();
+        ctx.drawImage(img, x, y, img.naturalWidth * scale, img.naturalHeight * scale);
+        ctx.restore();
+      }
+    }
+  }
+
+  // 2. containers: background + border
+  const boxSelectors = [".menubar", ".menu-top", ".diskbar", ".tab", ".pager", ".workarea", ".box", ".statusline", ".attrs th", ".attrs td", ".geo-cell", ".banner"];
   for (const sel of boxSelectors) {
     for (const el of root.querySelectorAll(sel)) {
       if (!visible(el)) continue;
@@ -44,7 +67,27 @@ async function snapshotMain() {
     }
   }
 
-  // 2. text leaves
+  // 3. images (art must sit under the overlay text)
+  const imgs = [];
+  for (const el of root.querySelectorAll("img")) {
+    if (!visible(el)) continue;
+    imgs.push(loadImage(el).then((img) => {
+      if (!img) return;
+      const r = el.getBoundingClientRect();
+      const st = getComputedStyle(el);
+      img._rect = { x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height };
+      img._opacity = st.opacity;
+      return img;
+    }));
+  }
+  for (const img of await Promise.all(imgs)) {
+    if (!img || !img._rect) continue;
+    ctx.globalAlpha = Number(img._opacity) || 1;
+    ctx.drawImage(img, img._rect.x, img._rect.y, img._rect.w, img._rect.h);
+    ctx.globalAlpha = 1;
+  }
+
+  // 4. text leaves
   const clipEl = document.getElementById("attrwrap");
   const clip = clipEl ? clipEl.getBoundingClientRect() : null;
   for (const el of root.querySelectorAll("*")) {
@@ -81,26 +124,6 @@ async function snapshotMain() {
     }
   }
 
-  // 3. images (status icons, logo, pager)
-  const imgs = [];
-  for (const el of root.querySelectorAll("img")) {
-    if (!visible(el)) continue;
-    imgs.push(loadImage(el).then((img) => {
-      if (!img) return;
-      const r = el.getBoundingClientRect();
-      const st = getComputedStyle(el);
-      img._rect = { x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height };
-      img._opacity = st.opacity;
-      return img;
-    }));
-  }
-  for (const img of await Promise.all(imgs)) {
-    if (!img || !img._rect) continue;
-    ctx.globalAlpha = Number(img._opacity) || 1;
-    ctx.drawImage(img, img._rect.x, img._rect.y, img._rect.w, img._rect.h);
-    ctx.globalAlpha = 1;
-  }
-
   canvas.toBlob((blob) => {
     if (!blob) return;
     const d = currentDisk();
@@ -118,15 +141,19 @@ async function snapshotMain() {
   }, "image/png");
 }
 
-function loadImage(el) {
+function loadImageSrc(src) {
   return new Promise((resolve) => {
-    if (!el.src) {
+    if (!src) {
       resolve(null);
       return;
     }
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
-    img.src = el.src;
+    img.src = src;
   });
+}
+
+function loadImage(el) {
+  return loadImageSrc(el.src);
 }

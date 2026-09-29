@@ -450,16 +450,23 @@ function renderHead() {
   }
 }
 
-const ATTR_COLS = ["col_id", "col_attr", "col_cur", "col_worst", "col_thr", "col_raw", "col_status"];
+const ATTR_COLS = ["", "col_id", "col_attr", "col_cur", "col_worst", "col_thr", "col_raw"];
 
 function renderAttrHead() {
   const tr = $("attrhead");
   tr.textContent = "";
   for (const c of ATTR_COLS) {
     const th = document.createElement("th");
-    th.textContent = t(c);
+    th.textContent = c ? t(c) : "";
     tr.append(th);
   }
+}
+
+// ledIcon is CDI's per-attribute status LED: theme art (led_* slot, fallback
+// chain included) or the bundled icons converted from CDI's res/*.ico.
+function ledIcon(status) {
+  const s = status === "good" || status === "caution" || status === "bad" ? status : "unknown";
+  return Theme.images["led_" + s] || "/icons/led_" + s + ".png";
 }
 
 function renderAttrs() {
@@ -478,15 +485,20 @@ function renderAttrs() {
   }
   for (const a of state.attrs) {
     const tr = document.createElement("tr");
-    if (a.status === "bad") tr.className = "bad";
+    const led = document.createElement("td");
+    led.className = "led";
+    const ledImg = document.createElement("img");
+    ledImg.src = ledIcon(a.status);
+    ledImg.alt = "";
+    led.append(ledImg);
+    tr.append(led);
     const cells = [
       a.id.toString(16).toUpperCase().padStart(2, "0"),
       attrName(a.id, a.name),
       a.current,
       a.worst,
       a.threshold,
-      fmtRaw(a),
-      t(a.status === "bad" ? "bad" : "ok")
+      fmtRaw(a)
     ];
     for (const c of cells) {
       const td = document.createElement("td");

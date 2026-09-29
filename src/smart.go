@@ -479,13 +479,11 @@ func normalize(d Device, j *smartJSON) Disk {
 		if raw == "" && a.Raw.Value != 0 {
 			raw = strconv.FormatInt(a.Raw.Value, 10)
 		}
-		status := "ok"
-		if a.WhenFailed != "" {
-			status = "bad"
-		}
+		// Status stays "good" here; evaluateHealth derives the CDI LED
+		// (good/caution/bad) from current/threshold — when_failed is not used.
 		disk.Attributes = append(disk.Attributes, Attribute{
 			ID: a.ID, Name: a.Name, Current: a.Value, Worst: a.Worst,
-			Threshold: a.Thresh, Raw: raw, RawValue: a.Raw.Value, Status: status,
+			Threshold: a.Thresh, Raw: raw, RawValue: a.Raw.Value, Status: "good",
 		})
 	}
 

@@ -57,6 +57,7 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 	errors, caution, thresholds := 0, false, 0
 	for i := range d.Attributes {
 		a := &d.Attributes[i]
+		a.Status = attributeStatus(a, d.IsSSD, s)
 		if a.Threshold > 0 {
 			thresholds++
 			if a.Current < a.Threshold {
@@ -101,6 +102,56 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 		d.Health = "good"
 	}
 	d.StatusReasons = reasons
+}
+
+// attributeStatus is CDI's per-attribute LED (DiskInfoDlgUpdate.cpp
+// UpdateListCtrl): temperature is always good; 05/C5/C6 go bad below the ATA
+// threshold and caution above the configured raw limit; the standard ATA
+// attribute ranges only go bad below a non-zero threshold; everything else
+// stays good. when_failed ("In_the_past" etc.) is intentionally ignored.
+func attributeStatus(a *Attribute, isSSD bool, s diskSettings) string {
+	if a.ID == 0xC2 {
+		return "good"
+	}
+	if !isSSD && (a.ID == 0x05 || a.ID == 0xC5 || a.ID == 0xC6) {
+		if a.Threshold > 0 && a.Current < a.Threshold {
+			return "bad"
+		}
+		var limit int
+		switch a.ID {
+		case 0x05:
+			limit = s.Threshold05
+		case 0xC5:
+			limit = s.ThresholdC5
+		case 0xC6:
+			limit = s.ThresholdC6
+		}
+		if limit > 0 && a.RawValue&0xFFFF != 0xFFFF && a.RawValue&0xFFFF >= int64(limit) {
+			return "caution"
+		}
+		return "good"
+	}
+	if a.Threshold > 0 && a.Current < a.Threshold && cdiAttrRange(a.ID) {
+		return "bad"
+	}
+	return "good"
+}
+
+// cdiAttrRange lists the attribute IDs CDI checks against the ATA threshold;
+// IDs outside these ranges are forced good (source: DiskInfoDlgUpdate.cpp).
+func cdiAttrRange(id int) bool {
+	switch {
+	case id >= 0x01 && id <= 0x0D,
+		id == 0x16,
+		id >= 0xBB && id <= 0xC1,
+		id >= 0xC3 && id <= 0xD1,
+		id >= 0xD3 && id <= 0xD4,
+		id >= 0xDC && id <= 0xE4,
+		id >= 0xE6 && id <= 0xE7,
+		id == 0xF0, id == 0xFA, id == 0xFE:
+		return true
+	}
+	return false
 }
 
 // computeLife mirrors CDI's Life percentage: NVMe = 100 - percentage_used;
