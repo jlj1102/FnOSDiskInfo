@@ -231,7 +231,8 @@ const FEATURE_TIPS = [
   ["TRIM", "feat_trim"],
   ["DevSleep", "feat_devsleep"],
   ["Streaming", "feat_streaming"],
-  ["GPL", "feat_gpl"]
+  ["GPL", "feat_gpl"],
+  ["VolatileWriteCache", "feat_vwc"]
 ];
 
 function featureTipText(d) {

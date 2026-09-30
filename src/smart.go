@@ -613,6 +613,15 @@ func normalize(d Device, j *smartJSON) Disk {
 			disk.HostReads = intPtr(int((n.DataUnitsRead * 1000) >> 21))
 			disk.HostWrites = intPtr(int((n.DataUnitsWritten * 1000) >> 21))
 		}
+		// Feature row: TRIM/VolatileWriteCache come from the Identify
+		// Controller when the ioctl works (smartctl's JSON often omits
+		// dataset_management); fall back to the JSON flags otherwise.
+		trim := j.NvmeOptionalNvmCommands.DatasetManagement
+		vwc := false
+		if buf := nvmeIdentify(d.Path); buf != nil {
+			trim, vwc = nvmeIdentifyFeatures(buf)
+		}
+		disk.Features = nvmeFeatures(j.SmartSupport.Available, trim, vwc)
 	case disk.IsSSD || isSsdOld(disk.Model):
 		disk.IsSSD = true
 		if fam, ok := matchSSDFamily(disk.Model, disk.Firmware, &disk); ok {

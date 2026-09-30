@@ -167,6 +167,14 @@ Decisions that supersede conflicting text below:
   sysfs link info is unavailable, e.g. USB bridges). The SanDisk/SF/Indilinx 16-digit raw
   variants are not ported yet.
   ponytail: those vendor raw-byte variants can be added if a user reports them.
+- v0.7.2: NVMe TRIM and VolatileWriteCache come from the Identify Controller read with
+  a stdlib ioctl (`nvme_linux.go`: NVME_IOCTL_ADMIN_CMD 0xC0484E41, opcode 0x06 CNS 0x01;
+  byte 520 bit 2 = Dataset Management, byte 525 bit 0 = VWC — same source as CDI,
+  AtaSmart.cpp:4001-4009), because smartctl 7.3's JSON omits
+  `nvme_optional_nvm_commands`; the JSON flags stay the fallback and the Windows dev
+  build uses the `nvme_other.go` stub. Feature row order: S.M.A.R.T., TRIM,
+  VolatileWriteCache. Geometry Standard/Features value cells span the full 408px
+  (CDI InitControl width) instead of the 180px value column, so full text shows.
 - Release rule: whenever the feature line bumps (v0.x), also bump `cdifnos/manifest`
   `version` and `src/main.go` `const version` so fnOS's app center detects an **upgrade**
   instead of a reinstall; the Nightly workflow additionally stamps

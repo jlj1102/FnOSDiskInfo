@@ -165,6 +165,7 @@ const EXTRA = {
     feat_devsleep: "DevSleep: Device Sleep",
     feat_streaming: "Streaming: Streaming Feature Set",
     feat_gpl: "GPL: General Purpose Log",
+    feat_vwc: "VolatileWriteCache: Volatile Write Cache Present",
     query: "Read", save_image: "Save Image", auto_refresh_target: "Auto Refresh Target",
     not_available: "Device does not provide AAM/APM data", disabled: "disabled", raw_output: "Raw output",
     value_required: "Enter a value between 1 and 254"
@@ -205,6 +206,7 @@ const EXTRA = {
     feat_devsleep: "DevSleep：设备睡眠",
     feat_streaming: "Streaming：流式传输特性集",
     feat_gpl: "GPL：通用用途日志",
+    feat_vwc: "VolatileWriteCache：存在易失性写缓存",
     query: "读取", save_image: "保存图片", auto_refresh_target: "自动刷新对象",
     not_available: "设备未提供 AAM/APM 数据", disabled: "已禁用", raw_output: "原始输出",
     value_required: "请输入 1-254 之间的数值"
@@ -245,6 +247,7 @@ const EXTRA = {
     feat_devsleep: "DevSleep：裝置睡眠",
     feat_streaming: "Streaming：串流功能集",
     feat_gpl: "GPL：一般用途記錄",
+    feat_vwc: "VolatileWriteCache：存在揮發性寫入快取",
     query: "讀取", save_image: "儲存圖片", auto_refresh_target: "自動重新整理對象",
     not_available: "裝置未提供 AAM/APM 資料", disabled: "已停用", raw_output: "原始輸出",
     value_required: "請輸入 1-254 之間的數值"
@@ -285,6 +288,7 @@ const EXTRA = {
     feat_devsleep: "DevSleep: デバイススリープ",
     feat_streaming: "Streaming: ストリーミング機能セット",
     feat_gpl: "GPL: 汎用ログ",
+    feat_vwc: "VolatileWriteCache: 揮発性ライトキャッシュあり",
     query: "読み取り", save_image: "画像を保存", auto_refresh_target: "自動更新の対象",
     not_available: "デバイスは AAM/APM 情報を提供していません", disabled: "無効", raw_output: "生の出力",
     value_required: "1〜254 の値を入力してください"

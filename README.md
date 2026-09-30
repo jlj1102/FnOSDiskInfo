@@ -45,9 +45,10 @@ dense, CDI-style UI.
 > 以下功能尚未在真实硬件上验证过，欢迎提交样本或反馈问题。
 
 - **NVMe：解析已按真机样本（SK hynix BC501，smartctl 7.3）验证**，属性表、LED、寿命、
-  主机读写量、NVM Express 标准与 PCIe 传输模式（读 `/sys/class/nvme/...`）均已接线；
-  VolatileWriteCache 特性无数据来源，USB 桥接 NVMe 读不到 sysfs 时传输模式显示 `--`，
-  其他 NVMe 设备/桥接的兼容性未验证
+  主机读写量、NVM Express 标准、PCIe 传输模式（读 `/sys/class/nvme/...`）与
+  TRIM / VolatileWriteCache（直接读 Identify Controller，不依赖 smartctl 的 JSON 字段）
+  均已接线；USB 桥接 NVMe 读不到 sysfs/ioctl 时传输模式显示 `--`，其他 NVMe 设备/桥接的
+  兼容性未验证
 - **USB：未验证。** USB 硬盘盒依赖 `smartctl --scan-open` 报出的 `-d sat/usb` 类型
   透传，没有做任何专门处理，可能可用但未测试
 - **SAS / HBA / RAID 卡：没有专门支持**，仅按 smartctl 默认路径工作

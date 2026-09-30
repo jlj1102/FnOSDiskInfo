@@ -545,6 +545,9 @@ body.cdi-geometry .geo { display: block; }
 .geo-col-labels-left .geo-row,
 .geo-col-labels-right .geo-row { text-align: right; opacity: 0.85; }
 .geo-col-values-right .geo-row { text-align: right; }
+/* CDI: Standard/Features values InitControl(256, 208/232, 408, 20) — rows 6-7
+   span the right column pair (180+128+100) so long values show in full. */
+.geo-col-values-left .geo-row:nth-child(n+6) { width: 408px; }
 .geo-cell {
   background: var(--cdi-panel);
   border: 1px solid var(--cdi-border);
