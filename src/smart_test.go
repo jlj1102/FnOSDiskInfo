@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -169,6 +170,38 @@ func TestNVMeCriticalWarning(t *testing.T) {
 	}
 	if len(d.StatusReasons) != 1 {
 		t.Fatalf("reasons = %v", d.StatusReasons)
+	}
+}
+
+// nvmeLinkMode reads the PCIe link info from sysfs (CDI's
+// GetTransferModePCIe equivalent) and formats it as "PCIe 3.0 x4".
+func TestNVMELinkMode(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "class", "nvme", "nvme0", "device")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, val string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(val), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("current_link_speed", "8.0 GT/s PCIe\n")
+	write("current_link_width", "4\n")
+	write("max_link_speed", "8.0 GT/s PCIe\n")
+	write("max_link_width", "4\n")
+	if got := nvmeLinkMode(root, "/dev/nvme0"); got != "PCIe 3.0 x4 | PCIe 3.0 x4" {
+		t.Errorf("nvme0 = %q", got)
+	}
+	if got := nvmeLinkMode(root, "/dev/nvme0n1"); got != "PCIe 3.0 x4 | PCIe 3.0 x4" {
+		t.Errorf("nvme0n1 = %q", got)
+	}
+	write("current_link_width", "0")
+	if got := nvmeLinkMode(root, "/dev/nvme0"); got != "---- | PCIe 3.0 x4" {
+		t.Errorf("zero width = %q", got)
+	}
+	if got := nvmeLinkMode(root, "/dev/nvme9"); got != "" {
+		t.Errorf("missing controller = %q", got)
 	}
 }
 

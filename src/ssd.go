@@ -1,6 +1,12 @@
 package main
 
-import "strings"
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+)
 
 // SSD family detection and value rules ported from CrystalDiskInfo
 // (AtaSmart.cpp: CheckSsdSupport + the IsSsd* predicates and the
@@ -656,3 +662,68 @@ func applySSDValues(d *Disk, fam ssdFamily) {
 }
 
 func intPtr(v int) *int { return &v }
+
+// nvmeLinkMode mirrors CDI's GetTransferModePCIe/SlotSpeedToString
+// (SlotSpeedGetter.cpp) using the PCIe link info smartctl's JSON does not
+// carry: /sys/class/nvme/<ctrl>/device/{current,max}_link_{speed,width}.
+func nvmeLinkMode(sysRoot, devPath string) string {
+	ctrl := nvmeController(devPath)
+	if ctrl == "" {
+		return ""
+	}
+	base := filepath.Join(sysRoot, "class", "nvme", ctrl, "device")
+	cur := pcieLink(filepath.Join(base, "current_link_speed"), filepath.Join(base, "current_link_width"))
+	max := pcieLink(filepath.Join(base, "max_link_speed"), filepath.Join(base, "max_link_width"))
+	switch {
+	case cur == "" && max == "":
+		return ""
+	case cur == "":
+		return max
+	case max == "":
+		return cur
+	}
+	return cur + " | " + max
+}
+
+var nvmeCtrlRe = regexp.MustCompile(`^(nvme\d+)`)
+
+// nvmeController maps /dev/nvme0 or /dev/nvme0n1 to the sysfs controller name.
+func nvmeController(devPath string) string {
+	return nvmeCtrlRe.FindString(filepath.Base(devPath))
+}
+
+func pcieLink(speedPath, widthPath string) string {
+	speed, err := os.ReadFile(speedPath)
+	if err != nil {
+		return ""
+	}
+	width, err := os.ReadFile(widthPath)
+	if err != nil {
+		return ""
+	}
+	spec := pcieSpec(strings.TrimSpace(string(speed)))
+	w, err := strconv.Atoi(strings.TrimSpace(string(width)))
+	if spec == 0 || err != nil || w <= 0 {
+		return "----"
+	}
+	return "PCIe " + strconv.Itoa(spec) + ".0 x" + strconv.Itoa(w)
+}
+
+// pcieSpec maps the sysfs link speed to the PCIe generation (CDI style).
+func pcieSpec(speed string) int {
+	switch {
+	case strings.HasPrefix(speed, "2.5"):
+		return 1
+	case strings.HasPrefix(speed, "5.0"):
+		return 2
+	case strings.HasPrefix(speed, "8.0"):
+		return 3
+	case strings.HasPrefix(speed, "16.0"):
+		return 4
+	case strings.HasPrefix(speed, "32.0"):
+		return 5
+	case strings.HasPrefix(speed, "64.0"):
+		return 6
+	}
+	return 0
+}

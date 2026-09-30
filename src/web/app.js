@@ -65,17 +65,6 @@ function fmtTemp(c) {
   return state.ui.unit === "F" ? Math.round((c * 9) / 5 + 32) + "°F" : c + "°C";
 }
 
-function fmtRaw(a) {
-  const v = a.raw_value;
-  if (v === undefined || v === null) return a.raw || "";
-  switch (state.ui.raw) {
-    case "dec": return String(v);
-    case "byte2": return String(v & 0xffff);
-    case "byte1": return String(v & 0xff);
-    default: return "0x" + v.toString(16).toUpperCase();
-  }
-}
-
 function healthClass(h) {
   return ["good", "caution", "bad"].includes(h) ? h : "unknown";
 }
@@ -232,6 +221,29 @@ function powerOnTip(hours) {
   return parts.join(" ");
 }
 
+// featureTipText lists only the features the disk actually has, with CDI's
+// per-feature descriptions.
+const FEATURE_TIPS = [
+  ["S.M.A.R.T.", "feat_smart"],
+  ["APM", "feat_apm"],
+  ["AAM", "feat_aam"],
+  ["NCQ", "feat_ncq"],
+  ["TRIM", "feat_trim"],
+  ["DevSleep", "feat_devsleep"],
+  ["Streaming", "feat_streaming"],
+  ["GPL", "feat_gpl"]
+];
+
+function featureTipText(d) {
+  if (!d || !d.features || !d.features.length) {
+    return "";
+  }
+  return d.features.map((f) => {
+    const hit = FEATURE_TIPS.find((x) => x[0] === f);
+    return hit ? t(hit[1]) : f;
+  }).join("\n");
+}
+
 // rotationCell is CDI's Rotation Rate row: NAND writes / "---- (SSD)" / RPM.
 function rotationCell(d) {
   if (!d) {
@@ -329,7 +341,7 @@ function renderGeoInfo() {
        { v: d.transfer_mode || dash, tip: t("tip_transfer_mode") },
        { v: d.device || dash },
        { v: d.standard || dash, tip: t("tip_standard") },
-       { v: features, tip: d.features && d.features.length ? t("tip_feature") : "" }]
+       { v: features, tip: featureTipText(d) }]
     : [dash, dash, dash, dash, dash, dash, dash], true);
 
   // CDI reuses the Buffer Size / NV Cache / Rotation Rate rows for the SSD
@@ -532,12 +544,27 @@ function renderHead() {
   }
 }
 
-const ATTR_COLS = ["", "col_id", "col_attr", "col_cur", "col_worst", "col_thr", "col_raw"];
+// attrCols mirrors CDI's per-vendor list layout (DiskInfoDlgUpdate.cpp
+// RebuildListHeader): NVMe and Indilinx hide Current/Worst/Threshold,
+// JMicron60x hides Worst/Threshold (zero-width columns in CDI).
+function attrCols(d) {
+  const key = (d && d.smart_key) || "";
+  const cols = ["", "col_id", "col_attr"];
+  if (!(d && d.nvme) && key !== "SmartIndilinx") {
+    cols.push("col_cur");
+    if (key !== "SmartJMicron60x") {
+      cols.push("col_worst", "col_thr");
+    }
+  }
+  cols.push("col_raw");
+  return cols;
+}
 
 function renderAttrHead() {
+  const cols = attrCols(currentDisk());
   const tr = $("attrhead");
   tr.textContent = "";
-  for (const c of ATTR_COLS) {
+  for (const c of cols) {
     const th = document.createElement("th");
     th.textContent = c ? t(c) : "";
     tr.append(th);
@@ -551,22 +578,49 @@ function ledIcon(status) {
   return Theme.images["led_" + s] || "/icons/led_" + s + ".png";
 }
 
+// fmtRaw mirrors CDI's raw value formats (DiskInfoDlgUpdate.cpp): hex is
+// zero-padded uppercase 6 bytes (NVMe: 7, with the reserved byte), dec is the
+// 48-bit value, byte2/byte1 are big-endian words/bytes.
+function fmtRaw(a, nvme) {
+  const v = a.raw_value;
+  if (v === undefined || v === null) return a.raw || "";
+  const u = ((Math.trunc(Number(v)) || 0) % 0x1000000000000 + 0x1000000000000) % 0x1000000000000;
+  const bytes = [];
+  for (let i = 5; i >= 0; i--) bytes.push(Math.floor(u / 256 ** i) % 256);
+  switch (state.ui.raw) {
+    case "dec": return String(u);
+    case "byte2": {
+      const words = [(bytes[0] << 8) | bytes[1], (bytes[2] << 8) | bytes[3], (bytes[4] << 8) | bytes[5]];
+      return (nvme ? ["0"].concat(words) : words).join(" ");
+    }
+    case "byte1":
+      return (nvme ? ["0"].concat(bytes) : bytes).join(" ");
+    default:
+      return (nvme ? "00" : "") + bytes.map((b) => b.toString(16).toUpperCase().padStart(2, "0")).join("");
+  }
+}
+
 function renderAttrs() {
   $("attrwrap").classList.toggle("hidden", state.ui.hideSmart);
+  const d = currentDisk() || {};
+  const isNvme = !!d.nvme;
+  const cols = attrCols(d);
+  const showCur = cols.includes("col_cur");
+  const showWorst = cols.includes("col_worst");
+  const showThr = cols.includes("col_thr");
+  renderAttrHead();
   const tb = $("attrs");
   tb.textContent = "";
   if (!state.attrs.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = ATTR_COLS.length;
+    td.colSpan = cols.length;
     td.className = "empty";
     td.textContent = t("no_attrs");
     tr.append(td);
     tb.append(tr);
     return;
   }
-  const d = currentDisk() || {};
-  const isNvme = !!d.nvme;
   for (const a of state.attrs) {
     const tr = document.createElement("tr");
     const led = document.createElement("td");
@@ -576,16 +630,14 @@ function renderAttrs() {
     ledImg.alt = "";
     led.append(ledImg);
     tr.append(led);
-    // NVMe pseudo attributes carry their value in the Raw column (CDI shows
-    // raw only); Worst/Threshold are not applicable.
     const cells = [
       a.id.toString(16).toUpperCase().padStart(2, "0"),
-      attrName(a.id, a.name, d.smart_key, d.is_ssd, isNvme),
-      a.current,
-      isNvme ? "—" : a.worst,
-      isNvme ? "—" : a.threshold,
-      isNvme ? (a.raw || "") : fmtRaw(a)
+      attrName(a.id, a.name, d.smart_key, d.is_ssd, isNvme)
     ];
+    if (showCur) cells.push(a.current);
+    if (showWorst) cells.push(a.worst);
+    if (showThr) cells.push(a.threshold);
+    cells.push(fmtRaw(a, isNvme));
     for (const c of cells) {
       const td = document.createElement("td");
       td.textContent = c;

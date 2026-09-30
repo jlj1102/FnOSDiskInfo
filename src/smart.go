@@ -607,6 +607,7 @@ func normalize(d Device, j *smartJSON) Disk {
 	switch {
 	case disk.NVMe != nil:
 		disk.SmartKey = "SmartNVMe"
+		disk.TransferMode = nvmeLinkMode("/sys", d.Path)
 		disk.Attributes = nvmeAttributes(&disk)
 		if n := j.NVMeLog; n != nil {
 			disk.HostReads = intPtr(int((n.DataUnitsRead * 1000) >> 21))

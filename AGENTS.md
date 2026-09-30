@@ -156,6 +156,17 @@ Decisions that supersede conflicting text below:
   Writes for SSDs (CDI ChangeDisk) plus title tooltips; `fake-smartctl` serves an HDD
   (sda), NVMe (sdb) and SSD (sdc), `FAKE_DEV=nvme|ssd` exposes a single device.
   Local SSD/NVMe samples live outside the repo (`*.json` at repo root is gitignored).
+- v0.7.1: SMART table column layouts now follow CDI's RebuildListHeader per vendor:
+  NVMe and SmartIndilinx hide Current/Worst/Threshold, SmartJMicron60x hides
+  Worst/Threshold. Raw values use CDI's formats (DiskInfoDlgUpdate.cpp): hex =
+  zero-padded uppercase bytes (ATA 12 digits, NVMe 14 with the reserved byte), dec =
+  48-bit value, byte2/byte1 = big-endian words/bytes. The feature tooltip lists only the
+  features the disk reports (`feat_*` i18n strings) instead of CDI's full list. NVMe
+  transfer mode comes from `/sys/class/nvme/<ctrl>/device/{current,max}_link_{speed,width}`
+  formatted like CDI's `SlotSpeedToString` (`PCIe 3.0 x4 | PCIe 3.0 x4`, empty when the
+  sysfs link info is unavailable, e.g. USB bridges). The SanDisk/SF/Indilinx 16-digit raw
+  variants are not ported yet.
+  ponytail: those vendor raw-byte variants can be added if a user reports them.
 - Release rule: whenever the feature line bumps (v0.x), also bump `cdifnos/manifest`
   `version` and `src/main.go` `const version` so fnOS's app center detects an **upgrade**
   instead of a reinstall; the Nightly workflow additionally stamps
