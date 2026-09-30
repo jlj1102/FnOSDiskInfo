@@ -9,3 +9,7 @@ cdifnos/app/server/cdi-server
 # OS
 .DS_Store
 Thumbs.db
+
+# local samples / editor leftovers
+/*.json
+*.un~
