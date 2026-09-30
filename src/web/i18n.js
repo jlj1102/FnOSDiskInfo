@@ -153,6 +153,11 @@ const EXTRA = {
     g_use_theme: "Use theme background", g_color: "Line Colors",
     about_graph: "Graph/Option UI adapted from CrystalDiskInfo (MIT).",
     fallback_theme: "Fallback Theme", none: "None", auto: "Auto",
+    total_host_reads: "Total Host Reads", total_host_writes: "Total Host Writes",
+    total_nand_writes: "Total NAND Writes", years: "years", days: "days",
+    tip_transfer_mode: "Current Mode | Supported Mode",
+    tip_standard: "Major Version | Minor Version",
+    tip_feature: "S.M.A.R.T.: Self-Monitoring, Analysis and Reporting Technology\nAPM: Advanced Power Management\nAAM: Automatic Acoustic Management\nNCQ: Native Command Queuing\nTRIM: Trim function of DATA SET MANAGEMENT command\nDevSleep: Device Sleep\nStreaming: Streaming Feature Set\nGPL: General Purpose Log",
     query: "Read", save_image: "Save Image", auto_refresh_target: "Auto Refresh Target",
     not_available: "Device does not provide AAM/APM data", disabled: "disabled", raw_output: "Raw output",
     value_required: "Enter a value between 1 and 254"
@@ -181,6 +186,11 @@ const EXTRA = {
     g_use_theme: "使用主题背景", g_color: "折线颜色",
     about_graph: "图表/选项界面移植自 CrystalDiskInfo（MIT）。",
     fallback_theme: "回退主题", none: "无", auto: "自动",
+    total_host_reads: "主机总计读取", total_host_writes: "主机总计写入",
+    total_nand_writes: "NAND 总计写入", years: "年", days: "天",
+    tip_transfer_mode: "当前的传输模式 | 支持的传输模式",
+    tip_standard: "主要版本 | 次要版本",
+    tip_feature: "S.M.A.R.T.：自我监测、分析与报告技术\nAPM：高级电源管理\nAAM：自动噪声管理\nNCQ：原生命令队列\nTRIM：DATA SET MANAGEMENT 命令的 Trim 功能\nDevSleep：设备睡眠\nStreaming：流式传输特性集\nGPL：通用用途日志",
     query: "读取", save_image: "保存图片", auto_refresh_target: "自动刷新对象",
     not_available: "设备未提供 AAM/APM 数据", disabled: "已禁用", raw_output: "原始输出",
     value_required: "请输入 1-254 之间的数值"
@@ -209,6 +219,11 @@ const EXTRA = {
     g_use_theme: "使用主題背景", g_color: "折線顏色",
     about_graph: "圖表/選項介面移植自 CrystalDiskInfo（MIT）。",
     fallback_theme: "回退主題", none: "無", auto: "自動",
+    total_host_reads: "對 SSD 累計讀取", total_host_writes: "對 SSD 累計寫入",
+    total_nand_writes: "NAND 累計寫入", years: "年", days: "天",
+    tip_transfer_mode: "目前模式 | 支援的模式",
+    tip_standard: "主要版本 | 次要版本",
+    tip_feature: "S.M.A.R.T.：自我監視、分析與報告技術\nAPM：進階電源管理\nAAM：自動噪音管理\nNCQ：原生指令佇列\nTRIM：DATA SET MANAGEMENT 指令的 Trim 功能\nDevSleep：裝置睡眠\nStreaming：串流功能集\nGPL：一般用途記錄",
     query: "讀取", save_image: "儲存圖片", auto_refresh_target: "自動重新整理對象",
     not_available: "裝置未提供 AAM/APM 資料", disabled: "已停用", raw_output: "原始輸出",
     value_required: "請輸入 1-254 之間的數值"
@@ -237,6 +252,11 @@ const EXTRA = {
     g_use_theme: "テーマ背景を使用", g_color: "線の色",
     about_graph: "グラフ/オプション UI は CrystalDiskInfo (MIT) から移植しました。",
     fallback_theme: "フォールバックテーマ", none: "なし", auto: "自動",
+    total_host_reads: "総読込量 (ホスト)", total_host_writes: "総書込量 (ホスト)",
+    total_nand_writes: "総書込量 (NAND)", years: "年", days: "日",
+    tip_transfer_mode: "現在の転送モード | 対応転送モード",
+    tip_standard: "メジャーバージョン | マイナーバージョン",
+    tip_feature: "S.M.A.R.T.: 自己監視・分析・報告技術\nAPM: 高度電源管理\nAAM: 自動音響管理\nNCQ: ネイティブコマンドキューイング\nTRIM: DATA SET MANAGEMENT コマンドの Trim 機能\nDevSleep: デバイススリープ\nStreaming: ストリーミング機能セット\nGPL: 汎用ログ",
     query: "読み取り", save_image: "画像を保存", auto_refresh_target: "自動更新の対象",
     not_available: "デバイスは AAM/APM 情報を提供していません", disabled: "無効", raw_output: "生の出力",
     value_required: "1〜254 の値を入力してください"
@@ -265,18 +285,26 @@ function t(key) {
   return m[key] || I18N.en[key] || key;
 }
 
-// attrName resolves a SMART attribute name via the CrystalDiskInfo tables
-// (attr-i18n.js, [Smart]/[SmartSsd]); unknown IDs fall back to smartctl's
-// English name.
-function attrName(id, fallback, isSsd) {
+// attrName resolves a SMART attribute name via CrystalDiskInfo's tables
+// (attr-i18n.js, all [Smart*] sections). The disk's matched section wins,
+// then the kind default, then Smart; unknown IDs fall back to smartctl's
+// English name (Aa_Bb -> Aa Bb).
+function attrName(id, fallback, smartKey, isSsd, isNvme) {
   const hex = id.toString(16).toUpperCase().padStart(2, "0");
-  const table = typeof ATTR_I18N !== "undefined" ? ATTR_I18N[LANG] || {} : {};
-  const ssd = isSsd && typeof ATTR_I18N_SSD !== "undefined" ? ATTR_I18N_SSD[LANG] || {} : {};
-  if (ssd[hex]) {
-    return ssd[hex];
+  const tables = typeof ATTR_I18N !== "undefined" ? ATTR_I18N[LANG] || {} : {};
+  const chain = [smartKey];
+  if (isNvme) {
+    chain.push("SmartNVMe");
   }
-  if (table[hex]) {
-    return table[hex];
+  if (isSsd) {
+    chain.push("SmartSsd");
+  }
+  chain.push("Smart");
+  for (const key of chain) {
+    const tbl = key ? tables[key] : null;
+    if (tbl && tbl[hex]) {
+      return tbl[hex];
+    }
   }
   return (fallback || "ID " + hex).replace(/_/g, " ");
 }

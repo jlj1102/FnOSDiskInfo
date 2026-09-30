@@ -186,15 +186,64 @@ function setGeometryMode() {
   document.body.classList.toggle("cdi-geometry", Theme.hasArt());
 }
 
+// geometric info rows accept plain strings or {v, tip} (CDI's tooltips).
 function geoRows(boxId, items, cell) {
   const box = $(boxId);
   box.textContent = "";
-  for (const text of items) {
+  for (const it of items) {
+    const text = typeof it === "string" ? it : it.v;
     const div = document.createElement("div");
     div.className = "geo-row" + (cell ? " geo-cell" : "");
     div.textContent = text;
+    if (it && typeof it === "object" && it.tip) {
+      div.title = it.tip;
+    }
     box.append(div);
   }
+}
+
+// humanGB mirrors the backend's tooltip size format ("4.534 TB").
+function humanGB(gb) {
+  if (gb == null) {
+    return "";
+  }
+  if (gb >= 1024 * 1024) {
+    return (gb / 1024 / 1024).toFixed(3) + " PB";
+  }
+  if (gb >= 1024) {
+    return (gb / 1024).toFixed(3) + " TB";
+  }
+  return gb + " GB";
+}
+
+// powerOnTip is CDI's "X years X days X hours" tooltip.
+function powerOnTip(hours) {
+  if (hours == null) {
+    return "";
+  }
+  const y = Math.floor(hours / 24 / 365);
+  const dd = Math.floor(hours / 24) % 365;
+  const hh = hours % 24;
+  const parts = [];
+  if (y > 0) {
+    parts.push(y + " " + t("years"));
+  }
+  parts.push(dd + " " + t("days"), hh + " " + t("hours"));
+  return parts.join(" ");
+}
+
+// rotationCell is CDI's Rotation Rate row: NAND writes / "---- (SSD)" / RPM.
+function rotationCell(d) {
+  if (!d) {
+    return { v: "--" };
+  }
+  if (d.rotation_rate > 0) {
+    return { v: fmtNum(d.rotation_rate) + " " + t("rpm") };
+  }
+  if (d.is_ssd) {
+    return { v: "---- (" + t("ssd") + ")" };
+  }
+  return { v: "--" };
 }
 
 function setGeoArt(el, src, text, px) {
@@ -267,20 +316,38 @@ function renderGeoDisks() {
 function renderGeoInfo() {
   const d = currentDisk();
   const dash = "--";
-  $("geoModel").textContent = d
-    ? (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes)
-    : (state.error || t("no_disks"));
+  const model = d ? (d.model || d.device) + " : " + fmtCapacity(d.capacity_bytes) : (state.error || t("no_disks"));
+  $("geoModel").textContent = model;
+  $("geoModel").title = d ? model + (d.firmware ? " [" + d.firmware + "]" : "") : "";
   const serial = d && d.serial ? (state.ui.hideSerial ? "********" : d.serial) : dash;
+  const features = d && d.features && d.features.length ? d.features.join(", ") : dash;
   geoRows("geoLabelsLeft", [t("firmware"), t("serial"), t("interface"), t("transfer_mode"), t("drive_map"), t("standard"), t("feature")], false);
   geoRows("geoValuesLeft", d
-    ? [d.firmware || dash, serial, d.protocol || dash, d.transfer_mode || dash, d.device || dash,
-       d.standard || dash, d.features && d.features.length ? d.features.join(", ") : dash]
+    ? [{ v: d.firmware || dash },
+       { v: serial, tip: state.ui.hideSerial ? "" : (d.serial || "") },
+       { v: d.protocol || dash },
+       { v: d.transfer_mode || dash, tip: t("tip_transfer_mode") },
+       { v: d.device || dash },
+       { v: d.standard || dash, tip: t("tip_standard") },
+       { v: features, tip: d.features && d.features.length ? t("tip_feature") : "" }]
     : [dash, dash, dash, dash, dash, dash, dash], true);
-  geoRows("geoLabelsRight", [t("buffer_size"), t("nv_cache"), t("rotation"), t("power_on_count"), t("power_on")], false);
-  const rot = !d || d.rotation_rate <= 0 ? (d && d.is_ssd ? t("ssd") : dash) : d.rotation_rate + " " + t("rpm");
+
+  // CDI reuses the Buffer Size / NV Cache / Rotation Rate rows for the SSD
+  // and NVMe totals (DiskInfoDlgUpdate.cpp ChangeDisk).
+  const hostReads = d && d.host_reads_gb != null ? d.host_reads_gb : null;
+  const hostWrites = d && d.host_writes_gb != null ? d.host_writes_gb : null;
+  const nandWrites = d && d.nand_writes_gb != null ? d.nand_writes_gb : null;
+  const gbRow = (v) => ({ v: v == null ? dash : fmtNum(v) + " GB", tip: humanGB(v) });
+  const hours = d && d.power_on_hours != null ? { v: fmtNum(d.power_on_hours) + " " + t("hours"), tip: powerOnTip(d.power_on_hours) } : { v: dash };
+  geoRows("geoLabelsRight", [
+    t(hostReads != null ? "total_host_reads" : "buffer_size"),
+    t(hostWrites != null ? "total_host_writes" : "nv_cache"),
+    t(nandWrites != null ? "total_nand_writes" : "rotation"),
+    t("power_on_count"), t("power_on")
+  ], false);
   geoRows("geoValuesRight", d
-    ? [dash, dash, rot, fmtNum(d.power_on_count),
-       d.power_on_hours == null ? dash : fmtNum(d.power_on_hours) + " " + t("hours")]
+    ? [gbRow(hostReads), gbRow(hostWrites), nandWrites != null ? gbRow(nandWrites) : rotationCell(d),
+       { v: fmtNum(d.power_on_count) }, hours]
     : [dash, dash, dash, dash, dash], true);
 
   const cls = d ? healthClass(d.health) : "unknown";
@@ -307,13 +374,16 @@ function renderGeoInfo() {
   }
 }
 
-function metaRow(c1, v1, c2, v2) {
+function metaRow(c1, v1, t1, c2, v2, t2) {
   const tr = document.createElement("tr");
-  for (const [label, value] of [[c1, v1], [c2, v2]]) {
+  for (const [label, value, tip] of [[c1, v1, t1], [c2, v2, t2]]) {
     const th = document.createElement("th");
     th.textContent = label;
     const td = document.createElement("td");
     td.textContent = value;
+    if (tip) {
+      td.title = tip;
+    }
     tr.append(th, td);
   }
   return tr;
@@ -418,14 +488,26 @@ function renderHead() {
   setBoxImage($("life"), themeImg("sd_" + cls), d.life == null ? "—" : t("life") + " " + d.life + " %", "life");
 
   const serial = d.serial ? (state.ui.hideSerial ? "********" : d.serial) : "—";
-  const rot = d.rotation_rate ? d.rotation_rate + " " + t("rpm") : t("ssd");
-  const hours = d.power_on_hours == null ? "—" : fmtNum(d.power_on_hours) + " " + t("hours");
+  const hostReads = d.host_reads_gb != null ? d.host_reads_gb : null;
+  const hostWrites = d.host_writes_gb != null ? d.host_writes_gb : null;
+  const nandWrites = d.nand_writes_gb != null ? d.nand_writes_gb : null;
+  const gbText = (v) => (v == null ? "—" : fmtNum(v) + " GB");
+  const rot = nandWrites != null
+    ? { label: t("total_nand_writes"), value: gbText(nandWrites), tip: humanGB(nandWrites) }
+    : { label: t("rotation"), value: rotationCell(d).v, tip: "" };
+  const hours = d.power_on_hours == null ? { v: "—" } : { v: fmtNum(d.power_on_hours) + " " + t("hours"), tip: powerOnTip(d.power_on_hours) };
   meta.append(
-    metaRow(t("firmware"), d.firmware || "—", t("rotation"), rot),
-    metaRow(t("serial"), serial, t("power_on_count"), fmtNum(d.power_on_count)),
-    metaRow(t("interface"), d.protocol || "—", t("power_on"), hours),
-    metaRow(t("device"), d.device, t("last_test"), d.self_test ? d.self_test.type + ": " + d.self_test.status : "—")
+    metaRow(t("firmware"), d.firmware || "—", "", rot.label, rot.value, rot.tip),
+    metaRow(t("serial"), serial, state.ui.hideSerial ? "" : (d.serial || ""), t("power_on_count"), fmtNum(d.power_on_count), ""),
+    metaRow(t("interface"), d.protocol || "—", "", t("power_on"), hours.v, hours.tip),
+    metaRow(t("device"), d.device, "", t("last_test"), d.self_test ? d.self_test.type + ": " + d.self_test.status : "—", "")
   );
+  if (hostReads != null || hostWrites != null) {
+    meta.append(metaRow(
+      hostReads != null ? t("total_host_reads") : "", hostReads != null ? gbText(hostReads) : "", humanGB(hostReads),
+      hostWrites != null ? t("total_host_writes") : "", hostWrites != null ? gbText(hostWrites) : "", humanGB(hostWrites)
+    ));
+  }
   if (d.status_reasons && d.status_reasons.length) {
     const tr = document.createElement("tr");
     const th = document.createElement("th");
@@ -483,6 +565,8 @@ function renderAttrs() {
     tb.append(tr);
     return;
   }
+  const d = currentDisk() || {};
+  const isNvme = !!d.nvme;
   for (const a of state.attrs) {
     const tr = document.createElement("tr");
     const led = document.createElement("td");
@@ -492,13 +576,15 @@ function renderAttrs() {
     ledImg.alt = "";
     led.append(ledImg);
     tr.append(led);
+    // NVMe pseudo attributes carry their value in the Raw column (CDI shows
+    // raw only); Worst/Threshold are not applicable.
     const cells = [
       a.id.toString(16).toUpperCase().padStart(2, "0"),
-      attrName(a.id, a.name, (currentDisk() || {}).is_ssd),
+      attrName(a.id, a.name, d.smart_key, d.is_ssd, isNvme),
       a.current,
-      a.worst,
-      a.threshold,
-      fmtRaw(a)
+      isNvme ? "—" : a.worst,
+      isNvme ? "—" : a.threshold,
+      isNvme ? (a.raw || "") : fmtRaw(a)
     ];
     for (const c of cells) {
       const td = document.createElement("td");

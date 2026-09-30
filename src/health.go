@@ -3,12 +3,14 @@ package main
 import "fmt"
 
 // evaluateHealth mirrors the essentials of CrystalDiskInfo's CheckDiskStatus:
-// - ATA: attribute below its threshold -> bad; 05/C5/C6 raw above the
-//   configurable caution threshold -> caution; SSD life below FF -> caution.
-// - NVMe: critical warning bits -> bad; available spare vs threshold; life.
+//   - ATA: attribute below its threshold -> bad; 05/C5/C6 raw above the
+//     configurable caution threshold -> caution; SSD life below FF -> caution.
+//   - NVMe: critical warning bits -> bad; available spare vs threshold; life.
 func (d *Disk) evaluateHealth(s diskSettings) {
 	d.AlarmTemp = s.AlarmTemp
-	d.Life = computeLife(d)
+	if d.Life == nil {
+		d.Life = computeLife(d)
+	}
 	d.StatusReasons = nil
 
 	if d.Error != "" || d.smartPassed == nil {
@@ -57,7 +59,7 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 	errors, caution, thresholds := 0, false, 0
 	for i := range d.Attributes {
 		a := &d.Attributes[i]
-		a.Status = attributeStatus(a, d.IsSSD, s)
+		a.Status = attributeStatus(d, a, s)
 		if a.Threshold > 0 {
 			thresholds++
 			if a.Current < a.Threshold {
@@ -105,15 +107,19 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 }
 
 // attributeStatus is CDI's per-attribute LED (DiskInfoDlgUpdate.cpp
-// UpdateListCtrl): temperature is always good; 05/C5/C6 go bad below the ATA
-// threshold and caution above the configured raw limit; the standard ATA
-// attribute ranges only go bad below a non-zero threshold; everything else
-// stays good. when_failed ("In_the_past" etc.) is intentionally ignored.
-func attributeStatus(a *Attribute, isSSD bool, s diskSettings) string {
+// UpdateListCtrl): NVMe pseudo attributes use their own rules; for ATA
+// temperature is always good; 05/C5/C6 go bad below the ATA threshold and
+// caution above the configured raw limit; the standard ATA attribute ranges
+// only go bad below a non-zero threshold; everything else stays good.
+// when_failed ("In_the_past" etc.) is intentionally ignored.
+func attributeStatus(d *Disk, a *Attribute, s diskSettings) string {
+	if d.NVMe != nil {
+		return nvmeAttributeStatus(d, a, s)
+	}
 	if a.ID == 0xC2 {
 		return "good"
 	}
-	if !isSSD && (a.ID == 0x05 || a.ID == 0xC5 || a.ID == 0xC6) {
+	if !d.IsSSD && (a.ID == 0x05 || a.ID == 0xC5 || a.ID == 0xC6) {
 		if a.Threshold > 0 && a.Current < a.Threshold {
 			return "bad"
 		}
@@ -133,6 +139,40 @@ func attributeStatus(a *Attribute, isSSD bool, s diskSettings) string {
 	}
 	if a.Threshold > 0 && a.Current < a.Threshold && cdiAttrRange(a.ID) {
 		return "bad"
+	}
+	return "good"
+}
+
+// nvmeAttributeStatus is CDI's NVMe branch of UpdateListCtrl.
+func nvmeAttributeStatus(d *Disk, a *Attribute, s diskSettings) string {
+	switch a.ID {
+	case 0x01: // Critical Warning
+		if a.Current != 0 {
+			return "bad"
+		}
+	case 0x02: // Composite Temperature
+		if s.AlarmTemp > 0 && a.Current >= s.AlarmTemp {
+			return "bad"
+		}
+	case 0x03: // Available Spare vs threshold (0x04)
+		th := 0
+		for i := range d.Attributes {
+			if d.Attributes[i].ID == 0x04 {
+				th = d.Attributes[i].Current
+			}
+		}
+		switch {
+		case th == 0 || th > 100, a.Current == 0 && th == 0:
+			// threshold not available / not supported
+		case a.Current < th:
+			return "bad"
+		case a.Current == th && th != 100:
+			return "caution"
+		}
+	case 0x05: // Percentage Used
+		if 100-a.Current <= s.ThresholdFF {
+			return "caution"
+		}
 	}
 	return "good"
 }
@@ -172,11 +212,21 @@ func computeLife(d *Disk) *int {
 	if !d.IsSSD {
 		return nil
 	}
-	wearIDs := []int{0xE7, 0xAD, 0xCA, 0xE9, 0xB1, 0xA9, 0xE8, 0xF1}
-	for _, id := range wearIDs {
+	// CDI reads E7 as the remaining-life raw value for most SSD makers
+	// (FlagLifeRawValue); raw 1-100 wins over the normalized value.
+	for _, id := range []int{0xE7, 0xAD, 0xCA, 0xE9, 0xB1, 0xA9, 0xE8, 0xF1} {
 		for i := range d.Attributes {
 			a := &d.Attributes[i]
-			if a.ID == id && a.Current >= 1 && a.Current <= 100 {
+			if a.ID != id {
+				continue
+			}
+			if id == 0xE7 {
+				if raw := int(uint32(a.RawValue)); raw >= 1 && raw <= 100 {
+					v := raw
+					return &v
+				}
+			}
+			if a.Current >= 1 && a.Current <= 100 {
 				v := a.Current
 				return &v
 			}

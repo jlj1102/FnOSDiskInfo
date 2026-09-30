@@ -144,6 +144,22 @@ Decisions that supersede conflicting text below:
   the workflow downloads the official
   `https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64` to `tools/fnpack.exe`)
   and publishes/updates the `nightly` pre-release with the artifact.
+- v0.7: SSD/NVMe display overhaul (CDI fidelity): `ssd.go` ports CheckSsdSupport + all 36
+  `IsSsd*` predicates (model/firmware substrings + attribute-ID signatures) to pick a
+  `smart_key` and applies the Life/Host Reads/Host Writes/NAND Writes rules (e.g. Kingston
+  SA400 E7 raw 93 -> life 93); NVMe gets CDI's 15 pseudo attributes (SmartNVMe names) with
+  per-row LED rules, `NVM Express x.y` standard, `NVM Express` interface and
+  S.M.A.R.T./TRIM features; `attr-i18n.js` regenerated with all 51 `[Smart*]` sections x 4
+  languages (hex keys); `attrName(id, fallback, smartKey, isSsd, isNvme)` walks
+  matched section -> SmartSsd/SmartNVMe -> Smart -> smartctl name (Aa_Bb -> Aa Bb); the
+  info panel reuses the Buffer/NV Cache/Rotation rows as Total Host Reads/Writes/NAND
+  Writes for SSDs (CDI ChangeDisk) plus title tooltips; `fake-smartctl` serves an HDD
+  (sda), NVMe (sdb) and SSD (sdc), `FAKE_DEV=nvme|ssd` exposes a single device.
+  Local SSD/NVMe samples live outside the repo (`*.json` at repo root is gitignored).
+- Release rule: whenever the feature line bumps (v0.x), also bump `cdifnos/manifest`
+  `version` and `src/main.go` `const version` so fnOS's app center detects an **upgrade**
+  instead of a reinstall; the Nightly workflow additionally stamps
+  `<version>-nightly.<run_number>` on its own builds.
 
 ---
 

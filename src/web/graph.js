@@ -175,7 +175,7 @@ async function buildSelect() {
       group.label = t("col_attr");
       for (const a of s.attributes || []) {
         const hex = a.id.toString(16).toUpperCase().padStart(2, "0");
-        addOption(group, "attr-" + hex, hex + " " + attrName(a.id, a.name, d.is_ssd));
+        addOption(group, "attr-" + hex, hex + " " + attrName(a.id, a.name, d.smart_key, d.is_ssd, !!d.nvme));
       }
       sel.append(group);
     } catch (e) {

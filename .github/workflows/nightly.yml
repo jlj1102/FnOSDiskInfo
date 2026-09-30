@@ -25,6 +25,16 @@ jobs:
           New-Item -ItemType Directory -Force tools | Out-Null
           Invoke-WebRequest https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64 -OutFile tools/fnpack.exe
 
+      # A unique version per build lets the fnOS app center detect an upgrade
+      - name: Stamp nightly version
+        shell: pwsh
+        run: |
+          $m = "cdifnos/manifest"
+          $base = ((Select-String -Path $m -Pattern '^version\s*=').Line -split '=', 2)[1].Trim()
+          $new = "$base-nightly.${{ github.run_number }}"
+          (Get-Content $m) -replace '^version\s*=.*$', "version               = $new" | Set-Content $m
+          "manifest version: $new"
+
       - name: Build cdifnos.fpk
         shell: pwsh
         run: ./build.ps1

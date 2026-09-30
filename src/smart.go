@@ -77,6 +77,10 @@ type Disk struct {
 	TransferMode  string      `json:"transfer_mode,omitempty"`
 	Standard      string      `json:"standard,omitempty"`
 	Features      []string    `json:"features,omitempty"`
+	SmartKey      string      `json:"smart_key,omitempty"`
+	HostReads     *int        `json:"host_reads_gb,omitempty"`
+	HostWrites    *int        `json:"host_writes_gb,omitempty"`
+	NandWrites    *int        `json:"nand_writes_gb,omitempty"`
 	Life          *int        `json:"life,omitempty"`
 	Health        string      `json:"health"` // good | caution | bad | unknown
 	StatusReasons []string    `json:"status_reasons,omitempty"`
@@ -254,7 +258,13 @@ type smartJSON struct {
 			GpLoggingSupported bool `json:"gp_logging_supported"`
 		} `json:"capabilities"`
 	} `json:"ata_smart_data"`
-	WWN             *struct {
+	NvmeVersion struct {
+		String string `json:"string"`
+	} `json:"nvme_version"`
+	NvmeOptionalNvmCommands struct {
+		DatasetManagement bool `json:"dataset_management"`
+	} `json:"nvme_optional_nvm_commands"`
+	WWN *struct {
 		NA  int   `json:"na"`
 		OUI int64 `json:"oui"`
 		ID  int64 `json:"id"`
@@ -406,8 +416,12 @@ func ataMajorName(v int) string {
 	return ""
 }
 
-// ataStandard is "ACS-3 | SATA 3.1" (ATA major standard | SATA spec version).
+// ataStandard is "ACS-3 | SATA 3.1" (ATA major standard | SATA spec version);
+// NVMe uses its own version string.
 func ataStandard(j *smartJSON) string {
+	if j.NvmeVersion.String != "" {
+		return "NVM Express " + j.NvmeVersion.String
+	}
 	var parts []string
 	if n := ataMajorName(j.AtaVersion.MajorValue); n != "" {
 		parts = append(parts, n)
@@ -422,6 +436,16 @@ func ataStandard(j *smartJSON) string {
 // NCQ is inferred from the NCQ Command Error log (GP log 0x10, mandatory for
 // NCQ capable devices); DevSleep/Streaming are not in smartctl output.
 func ataFeatures(j *smartJSON) []string {
+	if j.NVMeLog != nil {
+		var f []string
+		if j.SmartSupport.Available {
+			f = append(f, "S.M.A.R.T.")
+		}
+		if j.NvmeOptionalNvmCommands.DatasetManagement {
+			f = append(f, "TRIM")
+		}
+		return f
+	}
 	var f []string
 	if j.SmartSupport.Available {
 		f = append(f, "S.M.A.R.T.")
@@ -447,6 +471,59 @@ func ataFeatures(j *smartJSON) []string {
 	return f
 }
 
+// nvmeAttributes synthesizes CDI's 15 pseudo attributes (IDs 01-0F) from the
+// NVMe SMART/Health log so the SMART table and history work for NVMe.
+func nvmeAttributes(d *Disk) []Attribute {
+	n := d.NVMe
+	if n == nil {
+		return []Attribute{}
+	}
+	add := func(id int, name string, cur int, raw string, rawv int64) Attribute {
+		return Attribute{ID: id, Name: name, Current: cur, Raw: raw, RawValue: rawv, Status: "good"}
+	}
+	gb := func(units int64) string {
+		return fmt.Sprintf("%d [%s]", units, humanGB(int((units*1000)>>21)))
+	}
+	pct := func(v int) string { return strconv.Itoa(v) + " %" }
+	hours := 0
+	if d.PowerOnHours != nil {
+		hours = *d.PowerOnHours
+	}
+	temp := 0
+	if d.Temperature != nil {
+		temp = *d.Temperature
+	}
+	return []Attribute{
+		add(0x01, "Critical Warning", n.CriticalWarning, fmt.Sprintf("0x%02X", n.CriticalWarning), int64(n.CriticalWarning)),
+		add(0x02, "Composite Temperature", temp, fmt.Sprintf("%d °C", temp), int64(temp)),
+		add(0x03, "Available Spare", n.AvailableSpare, pct(n.AvailableSpare), int64(n.AvailableSpare)),
+		add(0x04, "Available Spare Threshold", n.SpareThreshold, pct(n.SpareThreshold), int64(n.SpareThreshold)),
+		add(0x05, "Percentage Used", n.PercentageUsed, pct(n.PercentageUsed), int64(n.PercentageUsed)),
+		add(0x06, "Data Units Read", int(n.DataUnitsRead), gb(n.DataUnitsRead), n.DataUnitsRead),
+		add(0x07, "Data Units Written", int(n.DataUnitsWritten), gb(n.DataUnitsWritten), n.DataUnitsWritten),
+		add(0x08, "Host Read Commands", int(n.HostReads), strconv.FormatInt(n.HostReads, 10), n.HostReads),
+		add(0x09, "Host Write Commands", int(n.HostWrites), strconv.FormatInt(n.HostWrites, 10), n.HostWrites),
+		add(0x0A, "Controller Busy Time", int(n.ControllerBusy), strconv.FormatInt(n.ControllerBusy, 10), n.ControllerBusy),
+		add(0x0B, "Power Cycles", int(n.PowerCycles), strconv.FormatInt(n.PowerCycles, 10), n.PowerCycles),
+		add(0x0C, "Power On Hours", hours, strconv.Itoa(hours), int64(hours)),
+		add(0x0D, "Unsafe Shutdowns", int(n.UnsafeShutdowns), strconv.FormatInt(n.UnsafeShutdowns, 10), n.UnsafeShutdowns),
+		add(0x0E, "Media and Data Integrity Errors", int(n.MediaErrors), strconv.FormatInt(n.MediaErrors, 10), n.MediaErrors),
+		add(0x0F, "Number of Error Information Log Entries", int(n.ErrorLogEntries), strconv.FormatInt(n.ErrorLogEntries, 10), n.ErrorLogEntries),
+	}
+}
+
+// humanGB renders CDI's tooltip-style size ("4.534 TB").
+func humanGB(gb int) string {
+	switch {
+	case gb >= 1024*1024:
+		return fmt.Sprintf("%.3f PB", float64(gb)/1024/1024)
+	case gb >= 1024:
+		return fmt.Sprintf("%.3f TB", float64(gb)/1024)
+	default:
+		return fmt.Sprintf("%d GB", gb)
+	}
+}
+
 func normalize(d Device, j *smartJSON) Disk {
 	disk := Disk{
 		ID:            stableID(d.Path, j),
@@ -470,6 +547,10 @@ func normalize(d Device, j *smartJSON) Disk {
 	if j.SmartStatus != nil {
 		passed := j.SmartStatus.Passed
 		disk.smartPassed = &passed
+	}
+	// CDI shows "NVM Express" as the interface for NVMe devices.
+	if strings.EqualFold(disk.Protocol, "nvme") {
+		disk.Protocol = "NVM Express"
 	}
 	// ponytail: rotation rate 0 is the SSD heuristic; CDI uses Identify data.
 	disk.IsSSD = disk.RotationRate == 0 && !strings.Contains(strings.ToUpper(disk.Protocol), "SCSI")
@@ -519,6 +600,28 @@ func normalize(d Device, j *smartJSON) Disk {
 			disk.PowerOnCount = &v
 		}
 		disk.NVMe = info
+	}
+
+	// CDI's CheckSsdSupport: pick the Smart* language section and apply the
+	// family Host Reads/Writes/NAND/Life rules.
+	switch {
+	case disk.NVMe != nil:
+		disk.SmartKey = "SmartNVMe"
+		disk.Attributes = nvmeAttributes(&disk)
+		if n := j.NVMeLog; n != nil {
+			disk.HostReads = intPtr(int((n.DataUnitsRead * 1000) >> 21))
+			disk.HostWrites = intPtr(int((n.DataUnitsWritten * 1000) >> 21))
+		}
+	case disk.IsSSD || isSsdOld(disk.Model):
+		disk.IsSSD = true
+		if fam, ok := matchSSDFamily(disk.Model, disk.Firmware, &disk); ok {
+			disk.SmartKey = fam.key
+			applySSDValues(&disk, fam)
+		} else {
+			disk.SmartKey = "SmartSsd"
+		}
+	default:
+		disk.SmartKey = "Smart"
 	}
 
 	disk.SelfTest = selfTestFrom(j)

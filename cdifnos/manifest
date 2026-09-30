@@ -1,5 +1,5 @@
 appname               = cdifnos
-version               = 0.1.0
+version               = 0.7.0
 display_name          = DiskInfo for fnOS
 desc                  = CrystalDiskInfo-like disk health viewer for fnOS. Reads SMART data via smartctl and shows a dense disk selector, health/temperature panel and SMART attribute table.
 platform              = x86

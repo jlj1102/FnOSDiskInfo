@@ -86,6 +86,7 @@ func TestATAThresholdError(t *testing.T) {
 
 const nvmeFixture = `{
   "device": {"name": "/dev/nvme0", "type": "nvme", "protocol": "NVMe", "model_name": "NVMe SSD", "serial_number": "NV1"},
+  "nvme_version": {"string": "1.2", "value": 66048},
   "smart_status": {"passed": true},
   "nvme_smart_health_information_log": {
     "critical_warning": 0,
@@ -93,6 +94,10 @@ const nvmeFixture = `{
     "available_spare": 100,
     "available_spare_threshold": 10,
     "percentage_used": 5,
+    "data_units_read": 104531623,
+    "data_units_written": 57968870,
+    "host_reads": 1944991175,
+    "host_writes": 871572678,
     "power_on_hours": 100,
     "power_cycles": 7
   },
@@ -125,6 +130,28 @@ func TestNormalizeNVMe(t *testing.T) {
 	}
 	if d.NVMe == nil || d.NVMe.AvailableSpare != 100 {
 		t.Errorf("nvme info = %+v", d.NVMe)
+	}
+	if d.Protocol != "NVM Express" || d.SmartKey != "SmartNVMe" {
+		t.Errorf("protocol/smart key = %q/%q", d.Protocol, d.SmartKey)
+	}
+	if d.Standard != "NVM Express 1.2" {
+		t.Errorf("standard = %q", d.Standard)
+	}
+	if len(d.Attributes) != 15 {
+		t.Fatalf("attributes = %d", len(d.Attributes))
+	}
+	if d.Attributes[5].ID != 0x06 || !strings.Contains(d.Attributes[5].Raw, "[") {
+		t.Errorf("data units read row = %+v", d.Attributes[5])
+	}
+	if d.HostReads == nil || *d.HostReads != 49844 {
+		t.Errorf("host reads = %v", d.HostReads)
+	}
+	if d.HostWrites == nil || *d.HostWrites != 27641 {
+		t.Errorf("host writes = %v", *d.HostWrites)
+	}
+	// LED rules: critical warning 0 -> good, percentage used 5 -> good
+	if d.Attributes[0].Status != "good" || d.Attributes[4].Status != "good" {
+		t.Errorf("led status = %q/%q", d.Attributes[0].Status, d.Attributes[4].Status)
 	}
 }
 

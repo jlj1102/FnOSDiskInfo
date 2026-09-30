@@ -11,8 +11,11 @@ dense, CDI-style UI.
 
 - 磁盘选择条（CDI 风格按钮、健康/温度/寿命状态、分页）
 - 健康引擎：good / caution / bad / unknown，可配置 caution 阈值，带原因列表
-- SMART 属性表：CDI 语义的左侧 LED、斑马纹、属性名本地化（en / zh-CN / zh-TW / ja）
-- 温度、寿命（NVMe percentage_used / ATA SSD 磨损属性）、转速、传输模式、标准、特性
+- SMART 属性表：CDI 语义的左侧 LED、斑马纹、属性名本地化（en / zh-CN / zh-TW / ja，
+  按 CDI 的厂商表匹配：Kingston / WDC / Samsung / Intel / Kioxia / SK hynix / Micron 等）
+- NVMe：由 SMART/Health 日志合成 CDI 的 15 行伪属性表（含 LED 判定）、NVM Express 标准与
+  主机读写总量；SATA SSD：CDI 同款寿命 / 主机读写 / NAND 写入规则
+- 温度、寿命、转速/SSD、传输模式、标准、特性；信息格悬停显示完整值/说明（传输模式、标准、特性等）
 - 历史曲线（Graph / 图表选项，移植 CDI 的 HTML 对话框，内置 flot）
 - 告警（横幅 + 告警列表）、SMART 自检 / 中止、AAM / APM 查询与设置
 - 报告导出（CDI 风格 report.txt、原始 smartctl JSON）、当前视图导出 PNG
@@ -41,14 +44,14 @@ dense, CDI-style UI.
 
 > 以下功能尚未在真实硬件上验证过，欢迎提交样本或反馈问题。
 
-- **NVMe：代码已实现但未在真机验证。** 已解析
-  `nvme_smart_health_information_log`（critical warning、可用备用块与阈值、寿命、
-  温度、读写量、掉电次数等）并接入健康引擎与历史；但 SMART 属性表只对 ATA 有效
-  （NVMe 下该表为空），"标准"一栏的 `nvme_version` 也未接线
+- **NVMe：解析已按真机样本（SK hynix BC501，smartctl 7.3）验证**，属性表、LED、寿命、
+  主机读写量与 NVM Express 标准均已接线；但 PCIe 传输速率（smartctl JSON 不提供）仍显示
+  `--`，VolatileWriteCache 特性无数据来源，其他 NVMe 设备/桥接的兼容性未验证
 - **USB：未验证。** USB 硬盘盒依赖 `smartctl --scan-open` 报出的 `-d sat/usb` 类型
   透传，没有做任何专门处理，可能可用但未测试
 - **SAS / HBA / RAID 卡：没有专门支持**，仅按 smartctl 默认路径工作
-- `buffer size` / `NV cache` 没有 smartctl JSON 来源，固定显示 `--`
+- SSD 厂商识别与数值规则是从 CDI 移植的尽力而为版本（含 36 个厂商判定），未覆盖到的
+  型号回落通用表（SmartSsd）与 smartctl 英文名
 - ATA 特性里的 DevSleep / Streaming 没有数据来源，不显示；NCQ 由
   NCQ Command Error 日志（GP log 0x10）推断
 - 导出的 PNG 不包含毛玻璃模糊（canvas 无法复制 `backdrop-filter`）
