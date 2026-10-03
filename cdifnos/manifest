@@ -1,7 +1,9 @@
 appname               = cdifnos
 version               = 0.7.2
-display_name          = DiskInfo for fnOS
-desc                  = CrystalDiskInfo-like disk health viewer for fnOS. Reads SMART data via smartctl and shows a dense disk selector, health/temperature panel and SMART attribute table.
+display_name          = FnOSDiskInfo
+maintainer            = ChickenTracier
+maintainer_url        = https://github.com/jlj1102/FnOSDiskInfo
+desc                  = 类似于CrystalDiskInfo的硬盘信息查看软件，支持大部分NVMe Sata SSD/ATA
 platform              = x86
 source                = thirdparty
 desktop_uidir         = ui
