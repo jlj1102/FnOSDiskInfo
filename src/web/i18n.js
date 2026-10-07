@@ -24,6 +24,9 @@ const I18N = {
     col_thr: "Threshold", col_raw: "Raw", col_status: "Status",
     server: "Server", client: "Display", interval_seconds: "Interval (seconds)",
     alarm_temp: "Alarm temp", threshold: "Threshold", defaults: "Defaults", per_disk: "Per disk",
+    threshold_05: "Reallocated Sectors", threshold_c5: "Pending Sectors",
+    threshold_c6: "Uncorrectable", threshold_ff: "Life",
+    lang_auto: "Auto (browser)",
     unit: "Temperature unit", celsius: "Celsius", fahrenheit: "Fahrenheit",
     raw_format: "Raw value format", hex: "16 HEX", dec: "10 DEC", byte2: "10 DEC 2byte", byte1: "10 DEC 1byte",
     hide_serial: "Hide serial number", saved: "Saved", inherit: "inherit",
@@ -58,6 +61,9 @@ const I18N = {
     col_thr: "阈值", col_raw: "原始值", col_status: "状态",
     server: "服务端", client: "显示", interval_seconds: "采集间隔（秒）",
     alarm_temp: "报警温度", threshold: "阈值", defaults: "默认值", per_disk: "每块硬盘",
+    threshold_05: "重映射扇区", threshold_c5: "待映射扇区",
+    threshold_c6: "不可纠正扇区", threshold_ff: "寿命",
+    lang_auto: "自动（浏览器）",
     unit: "温度单位", celsius: "摄氏度", fahrenheit: "华氏度",
     raw_format: "原始值格式", hex: "16 进制", dec: "10 进制", byte2: "10 进制 2字节", byte1: "10 进制 1字节",
     hide_serial: "隐藏序列号", saved: "已保存", inherit: "继承",
@@ -92,6 +98,9 @@ const I18N = {
     col_thr: "閾值", col_raw: "原始值", col_status: "狀態",
     server: "伺服端", client: "顯示", interval_seconds: "採集間隔（秒）",
     alarm_temp: "警報溫度", threshold: "閾值", defaults: "預設值", per_disk: "每顆硬碟",
+    threshold_05: "重映射磁區", threshold_c5: "待映射磁區",
+    threshold_c6: "不可更正磁區", threshold_ff: "壽命",
+    lang_auto: "自動（瀏覽器）",
     unit: "溫度單位", celsius: "攝氏", fahrenheit: "華氏",
     raw_format: "原始值格式", hex: "16 進位", dec: "10 進位", byte2: "10 進位 2位元組", byte1: "10 進位 1位元組",
     hide_serial: "隱藏序號", saved: "已儲存", inherit: "繼承",
@@ -126,6 +135,9 @@ const I18N = {
     col_thr: "しきい値", col_raw: "生値", col_status: "状態",
     server: "サーバー", client: "表示", interval_seconds: "収集間隔（秒）",
     alarm_temp: "アラーム温度", threshold: "しきい値", defaults: "デフォルト", per_disk: "ディスクごと",
+    threshold_05: "代替処理済セクタ", threshold_c5: "保留中セクタ",
+    threshold_c6: "訂正不能セクタ", threshold_ff: "寿命",
+    lang_auto: "自動（ブラウザ）",
     unit: "温度単位", celsius: "摂氏", fahrenheit: "華氏",
     raw_format: "生値形式", hex: "16 進", dec: "10 進", byte2: "10 進 2バイト", byte1: "10 進 1バイト",
     hide_serial: "シリアル非表示", saved: "保存しました", inherit: "継承",
@@ -316,6 +328,13 @@ if (LANG.startsWith("zh")) {
   LANG = LANG.includes("tw") || LANG.includes("hk") ? "zh-TW" : "zh-CN";
 } else if (!LANG.startsWith("ja")) {
   LANG = "en";
+}
+const BROWSER_LANG = LANG;
+
+// browserLang is the auto-detected language, kept for the "Auto (browser)"
+// language menu choice even after setLang() switched to another one.
+function browserLang() {
+  return BROWSER_LANG;
 }
 
 function setLang(lang) {

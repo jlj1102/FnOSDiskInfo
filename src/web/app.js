@@ -832,6 +832,24 @@ function togglePref(key, render) {
   refreshMenus();
 }
 
+// ---------- language ----------
+
+function currentLangPref() {
+  return localStorage.getItem("cdifnos.lang") || "auto";
+}
+
+function setLangPref(lang) {
+  if (lang === "auto") {
+    localStorage.removeItem("cdifnos.lang");
+    setLang(browserLang());
+  } else {
+    localStorage.setItem("cdifnos.lang", lang);
+    setLang(lang);
+  }
+  applyStaticTexts();
+  refresh();
+}
+
 // ---------- actions ----------
 
 function rescanNow() {
@@ -989,6 +1007,7 @@ function buildMenus() {
           }))
         },
         { label: t("rescan") + " (F6)", action: rescanNow },
+        { label: t("selftest"), action: openSelftest },
         { separator: true },
         { label: t("graph"), action: openGraph },
         { label: t("g_options"), action: openGraphOptions },
@@ -1101,7 +1120,18 @@ function buildMenus() {
                 action: () => deleteTheme(ti.id)
               }))
             }]
-          : [])
+          : []),
+        { separator: true },
+        {
+          label: t("lang"),
+          items: [
+            { label: t("lang_auto"), checked: () => currentLangPref() === "auto", action: () => setLangPref("auto") },
+            { label: "English", checked: () => currentLangPref() === "en", action: () => setLangPref("en") },
+            { label: "简体中文", checked: () => currentLangPref() === "zh-CN", action: () => setLangPref("zh-CN") },
+            { label: "繁體中文", checked: () => currentLangPref() === "zh-TW", action: () => setLangPref("zh-TW") },
+            { label: "日本語", checked: () => currentLangPref() === "ja", action: () => setLangPref("ja") }
+          ]
+        }
       ]
     },
     {
@@ -1252,6 +1282,8 @@ function openGraph() {
 }
 
 function openGraphOptions() {
+  // Reload so the option window picks up the current language and colors.
+  $("optFrame").src = "option.html";
   $("dlgOption").showModal();
 }
 

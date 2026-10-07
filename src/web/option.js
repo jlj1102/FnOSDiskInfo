@@ -81,6 +81,9 @@ function applyLanguage() {
     }
   };
   document.getElementById("bgClear").textContent = t("disable");
+  document.getElementById("bgClear").onclick = () => {
+    document.getElementById("bgImage").value = "";
+  };
 }
 
 function save() {

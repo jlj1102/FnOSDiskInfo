@@ -343,10 +343,10 @@ body {
 .attrs td.led { padding: 0 4px; text-align: center; }
 .attrs td.led img { display: block; width: 16px; height: 16px; margin: 0 auto; }
 .attrs td:nth-child(2) { text-align: center; }
-.attrs td:nth-child(4),
-.attrs td:nth-child(5),
-.attrs td:nth-child(6) { text-align: right; }
-.attrs td:nth-child(7) { font-family: Consolas, "Courier New", monospace; text-align: right; }
+/* Numeric columns sit between the attribute name and the raw value; the raw
+   value is always the last cell, whatever columns the vendor layout hides. */
+.attrs td:nth-child(n+4):not(:last-child) { text-align: right; }
+.attrs td:last-child:not(.empty) { font-family: Consolas, "Courier New", monospace; text-align: right; }
 /* CDI's list only stripes rows (ListBk1/ListBk2); status lives in the LED. */
 .attrs tbody tr:nth-child(even) td { background: var(--cdi-bg); }
 

@@ -21,6 +21,7 @@ dense, CDI-style UI.
 - 报告导出（CDI 风格 report.txt、原始 smartctl JSON）、当前视图导出 PNG
 - 主题：内置 Light / Dark / Follow fnOS；可导入 CDI 主题包（zip），支持父主题与
   回退素材链（与 CDI `IP()` 的四级回退一致），菜单栏跟随 fnOS 深浅色
+- 语言：跟随浏览器 / 简体中文 / 繁體中文 / 日本語 / English（主题菜单切换）
 - 显示偏好：缩放、字体、温标、原始值格式、隐藏序列号/表格、磁盘排序等
 
 ## 安装

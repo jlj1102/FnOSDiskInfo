@@ -190,6 +190,16 @@ Decisions that supersede conflicting text below:
   still follows `smart_status` alone (absent -> unknown, no counter rules).
   `prevByDevice` is now keyed by `path|type` because all MegaRAID members share
   one node. Fixtures: `FAKE_DEV=sas|raid`.
+- v0.7.4: UI fixes + language menu. Function menu Self-Test entry restored
+  (lost in the v0.3 menubar refactor; `openSelftest` was unreachable since);
+  Theme > Language submenu (`cdifnos.lang`: auto = browser detect, en,
+  zh-CN, zh-TW, ja; i18n.js keeps `browserLang()` for the auto choice);
+  settings dialog threshold labels (threshold_05/c5/c6/ff) localized in all
+  four languages; graph option window "Disable" button now clears the
+  background field; SMART table raw column styling keyed on `:last-child`
+  (plus `nth-child(n+4):not(:last-child)` for numeric columns) instead of
+  `nth-child(7)`, so NVMe/SCSI/Indilinx/JMicron layouts keep the monospace
+  right-aligned raw column.
 - Release rule: whenever the feature line bumps (v0.x), also bump `cdifnos/manifest`
   `version` and `src/main.go` `const version` so fnOS's app center detects an **upgrade**
   instead of a reinstall; the Nightly workflow additionally stamps
