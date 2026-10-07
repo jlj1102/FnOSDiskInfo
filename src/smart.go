@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -149,8 +150,8 @@ func parseScanOutput(out string) []Device {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		line = strings.SplitN(line, "#", 2)[0]
-		fields := strings.Fields(line)
+		cmd, comment, _ := strings.Cut(line, "#")
+		fields := strings.Fields(cmd)
 		if len(fields) == 0 || !strings.HasPrefix(fields[0], "/dev/") {
 			continue
 		}
@@ -161,10 +162,21 @@ func parseScanOutput(out string) []Device {
 				break
 			}
 		}
+		// SATA members behind MegaRAID scan as "-d sat /dev/bus/N", which
+		// cannot be replayed (no /dev/bus/N node exists); the comment carries
+		// the real member index. `smartctl -d megaraid,N /dev/bus/N` re-runs
+		// the SAT autodetection on open.
+		if m := megaraidRe.FindStringSubmatch(comment); m != nil {
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				d.Type = "megaraid," + strconv.Itoa(n)
+			}
+		}
 		devs = append(devs, d)
 	}
 	return devs
 }
+
+var megaraidRe = regexp.MustCompile(`\[megaraid_disk_(\d+)\]`)
 
 func scanDevices(smartctl string) ([]Device, error) {
 	out, err := runSmartctl(smartctl, 20*time.Second, "--scan-open")
@@ -318,7 +330,23 @@ type smartJSON struct {
 		Enabled bool `json:"enabled"`
 		Level   int  `json:"level"`
 	} `json:"ata_apm"`
-	Smartctl struct {
+	ScsiRevision          string `json:"scsi_revision"`
+	ScsiVersion           string `json:"scsi_version"`
+	ScsiTransportProtocol struct {
+		Name  string `json:"name"`
+		Value *int   `json:"value"` // 6 = SAS (transport_proto_arr)
+	} `json:"scsi_transport_protocol"`
+	ScsiGrownDefectList *int `json:"scsi_grown_defect_list"`
+	ScsiPendingDefects  struct {
+		Count *int `json:"count"`
+	} `json:"scsi_pending_defects"`
+	ScsiErrorCounterLog struct {
+		Read   scsiErrorCounters `json:"read"`
+		Write  scsiErrorCounters `json:"write"`
+		Verify scsiErrorCounters `json:"verify"`
+	} `json:"scsi_error_counter_log"`
+	ScsiStartStop scsiStartStop `json:"scsi_start_stop_cycle_counter"`
+	Smartctl      struct {
 		Messages []struct {
 			String   string `json:"string"`
 			Severity string `json:"severity"`
@@ -429,6 +457,9 @@ func ataStandard(j *smartJSON) string {
 	if j.SataVersion.String != "" {
 		parts = append(parts, j.SataVersion.String)
 	}
+	if len(parts) == 0 && j.ScsiVersion != "" {
+		return j.ScsiVersion
+	}
 	return strings.Join(parts, " | ")
 }
 
@@ -526,11 +557,11 @@ func humanGB(gb int) string {
 
 func normalize(d Device, j *smartJSON) Disk {
 	disk := Disk{
-		ID:            stableID(d.Path, j),
+		ID:            stableID(d.Path, d.Type, j),
 		Device:        d.Path,
 		Model:         firstNonEmpty(j.Device.ModelName, j.ModelName),
 		Serial:        firstNonEmpty(j.Device.SerialNumber, j.SerialNumber),
-		Firmware:      firstNonEmpty(j.Device.Firmware, j.Firmware),
+		Firmware:      firstNonEmpty(j.Device.Firmware, j.Firmware, j.ScsiRevision),
 		Protocol:      firstNonEmpty(j.Device.Protocol, j.Device.Type),
 		CapacityBytes: j.UserCapacity.Bytes,
 		Temperature:   j.Temperature.Current,
@@ -552,8 +583,16 @@ func normalize(d Device, j *smartJSON) Disk {
 	if strings.EqualFold(disk.Protocol, "nvme") {
 		disk.Protocol = "NVM Express"
 	}
+	// SAS disks report transport protocol 6; plain SCSI (USB bridges etc.)
+	// keeps smartctl's protocol string.
+	if strings.EqualFold(disk.Protocol, "SCSI") && j.ScsiTransportProtocol.Value != nil && *j.ScsiTransportProtocol.Value == 6 {
+		disk.Protocol = "SAS"
+	}
 	// ponytail: rotation rate 0 is the SSD heuristic; CDI uses Identify data.
-	disk.IsSSD = disk.RotationRate == 0 && !strings.Contains(strings.ToUpper(disk.Protocol), "SCSI")
+	// SCSI/SAS rotation_rate 0 also means "not reported", so they stay HDDs.
+	disk.IsSSD = disk.RotationRate == 0 &&
+		!strings.Contains(strings.ToUpper(disk.Protocol), "SCSI") &&
+		!strings.Contains(strings.ToUpper(disk.Protocol), "SAS")
 
 	for _, a := range j.AtaAttrTable.Table {
 		raw := a.Raw.String
@@ -630,6 +669,15 @@ func normalize(d Device, j *smartJSON) Disk {
 		} else {
 			disk.SmartKey = "SmartSsd"
 		}
+	case strings.EqualFold(disk.Protocol, "SAS") || strings.EqualFold(disk.Protocol, "SCSI"):
+		disk.SmartKey = "SmartScsi"
+		disk.Attributes = scsiAttributes(j)
+		if disk.PowerOnCount == nil {
+			if c := j.ScsiStartStop.cycles(); c != nil {
+				v := int(*c)
+				disk.PowerOnCount = &v
+			}
+		}
 	default:
 		disk.SmartKey = "Smart"
 	}
@@ -674,8 +722,10 @@ func selfTestFrom(j *smartJSON) *SelfTest {
 	return st
 }
 
-// stableID prefers WWN (udev-compatible NAA-5 form), then serial, then device name.
-func stableID(path string, j *smartJSON) string {
+// stableID prefers WWN (udev-compatible NAA-5 form), then serial, then device
+// name; the -d type disambiguates shared nodes (all MegaRAID members scan as
+// /dev/bus/N).
+func stableID(path, devType string, j *smartJSON) string {
 	if j.WWN != nil && j.WWN.NA == 0 {
 		w := uint64(5)<<60 | (uint64(j.WWN.OUI)&0xFFFFFF)<<36 | uint64(j.WWN.ID)&0xFFFFFFFFF
 		return fmt.Sprintf("wwn-0x%x", w)
@@ -686,7 +736,11 @@ func stableID(path string, j *smartJSON) string {
 	if s := sanitize(j.Device.SerialNumber); s != "" {
 		return "serial-" + s
 	}
-	return "dev-" + sanitize(strings.TrimPrefix(path, "/dev/"))
+	id := "dev-" + sanitize(strings.TrimPrefix(path, "/dev/"))
+	if devType != "" {
+		id += "-" + sanitize(devType)
+	}
+	return id
 }
 
 func sanitize(s string) string {

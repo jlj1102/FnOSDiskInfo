@@ -175,6 +175,21 @@ Decisions that supersede conflicting text below:
   build uses the `nvme_other.go` stub. Feature row order: S.M.A.R.T., TRIM,
   VolatileWriteCache. Geometry Standard/Features value cells span the full 408px
   (CDI InitControl width) instead of the 180px value column, so full text shows.
+- v0.7.3: SAS/HBA + MegaRAID support. SATA members behind MegaRAID scan as
+  `/dev/bus/N -d sat # ... [megaraid_disk_MM] [SAT]` which cannot be replayed
+  (no /dev/bus/N node); the comment's index is folded back into `-d megaraid,N`
+  (smartctl re-runs SAT autodetection on open, so SATA members keep full ATA
+  SMART, SAS members use the SCSI path). SAS/SCSI disks get firmware from
+  `scsi_revision`, Standard from `scsi_version`, interface "SAS" from
+  `scsi_transport_protocol.value==6`, Power On Count from
+  `scsi_start_stop_cycle_counter` (both the 7.3 raw-label and 7.4+ str2key).
+  SCSI health data smartctl reports is mapped to pseudo attributes (IDs 01-07:
+  health status / grown defects / pending defects / read-write-verify errors /
+  load-unload cycles) with Current/Worst/Threshold hidden like NVMe; row LEDs
+  only caution on non-zero defect/uncorrected counts, and the disk health class
+  still follows `smart_status` alone (absent -> unknown, no counter rules).
+  `prevByDevice` is now keyed by `path|type` because all MegaRAID members share
+  one node. Fixtures: `FAKE_DEV=sas|raid`.
 - Release rule: whenever the feature line bumps (v0.x), also bump `cdifnos/manifest`
   `version` and `src/main.go` `const version` so fnOS's app center detects an **upgrade**
   instead of a reinstall; the Nightly workflow additionally stamps

@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const version = "0.7.2"
+const version = "0.7.3"
 
 //go:embed web
 var webFiles embed.FS
@@ -128,18 +128,22 @@ func (c *collector) collect() {
 		}
 		prevByDevice := map[string]Disk{}
 		for _, d := range c.disks {
-			prevByDevice[d.Device] = d
+			prevByDevice[d.Device+"|"+d.smartType] = d
 		}
 		for _, dev := range devices {
-			if prev, ok := prevByDevice[dev.Path]; ok && excluded[prev.ID] {
+			if prev, ok := prevByDevice[dev.Path+"|"+dev.Type]; ok && excluded[prev.ID] {
 				prev.Stale = true
 				resp.Disks = append(resp.Disks, prev)
 				continue
 			}
 			raw, j, err := readSmart(c.smartctl, dev)
 			if err != nil {
+				id := "dev-" + sanitize(strings.TrimPrefix(dev.Path, "/dev/"))
+				if dev.Type != "" {
+					id += "-" + sanitize(dev.Type)
+				}
 				resp.Disks = append(resp.Disks, Disk{
-					ID:     "dev-" + sanitize(strings.TrimPrefix(dev.Path, "/dev/")),
+					ID:     id,
 					Device: dev.Path,
 					Health: "unknown",
 					Error:  err.Error(),

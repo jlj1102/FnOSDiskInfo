@@ -31,6 +31,9 @@ const I18N = {
     m_power_on_count: "Power On Count", m_reallocated: "Reallocated Sectors",
     m_realloc_events: "Realloc. Events", m_pending: "Pending Sectors",
     m_uncorrectable: "Uncorrectable", m_host_reads: "Host Reads (GB)", m_host_writes: "Host Writes (GB)",
+    sattr_01: "SMART Health Status", sattr_02: "Grown Defect List", sattr_03: "Pending Defects",
+    sattr_04: "Read Errors", sattr_05: "Write Errors", sattr_06: "Verify Errors",
+    sattr_07: "Load/Unload Cycles",
   },
   "zh-CN": {
     good: "良好", caution: "注意", bad: "损坏", unknown: "未知", ok: "正常",
@@ -62,6 +65,9 @@ const I18N = {
     m_power_on_count: "通电次数", m_reallocated: "重映射扇区", m_realloc_events: "重映射事件",
     m_pending: "待映射扇区", m_uncorrectable: "不可纠正扇区",
     m_host_reads: "主机读取 (GB)", m_host_writes: "主机写入 (GB)",
+    sattr_01: "SMART 健康状态", sattr_02: "增长缺陷表", sattr_03: "待定缺陷",
+    sattr_04: "读取错误", sattr_05: "写入错误", sattr_06: "校验错误",
+    sattr_07: "装卸载次数",
   },
   "zh-TW": {
     good: "良好", caution: "注意", bad: "損壞", unknown: "未知", ok: "正常",
@@ -93,6 +99,9 @@ const I18N = {
     m_power_on_count: "通電次數", m_reallocated: "重映射磁區", m_realloc_events: "重映射事件",
     m_pending: "待映射磁區", m_uncorrectable: "不可更正磁區",
     m_host_reads: "主機讀取 (GB)", m_host_writes: "主機寫入 (GB)",
+    sattr_01: "SMART 健康狀態", sattr_02: "增長缺陷表", sattr_03: "待定缺陷",
+    sattr_04: "讀取錯誤", sattr_05: "寫入錯誤", sattr_06: "校驗錯誤",
+    sattr_07: "裝卸載次數",
   },
   ja: {
     good: "良好", caution: "注意", bad: "異常", unknown: "不明", ok: "正常",
@@ -124,6 +133,9 @@ const I18N = {
     m_power_on_count: "通電回数", m_reallocated: "代替処理済みセクタ", m_realloc_events: "代替処理イベント",
     m_pending: "保留中セクタ", m_uncorrectable: "訂正不能セクタ",
     m_host_reads: "ホスト読み込み (GB)", m_host_writes: "ホスト書き込み (GB)",
+    sattr_01: "SMART 健全性ステータス", sattr_02: "増加欠陥リスト", sattr_03: "保留欠陥",
+    sattr_04: "読み取りエラー", sattr_05: "書き込みエラー", sattr_06: "検証エラー",
+    sattr_07: "ロード/アンロード回数",
   }
 };
 
@@ -323,6 +335,12 @@ function t(key) {
 // English name (Aa_Bb -> Aa Bb).
 function attrName(id, fallback, smartKey, isSsd, isNvme) {
   const hex = id.toString(16).toUpperCase().padStart(2, "0");
+  // SCSI/SAS pseudo attributes are our own rows, not CDI tables.
+  if (smartKey === "SmartScsi") {
+    const key = "sattr_" + hex;
+    const v = t(key);
+    return v === key ? fallback || "ID " + hex : v;
+  }
   const tables = typeof ATTR_I18N !== "undefined" ? ATTR_I18N[LANG] || {} : {};
   const chain = [smartKey];
   if (isNvme) {

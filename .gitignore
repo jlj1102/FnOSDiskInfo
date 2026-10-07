@@ -13,3 +13,7 @@ Thumbs.db
 # local samples / editor leftovers
 /*.json
 *.un~
+
+# reference source clones (read-only, not part of the package)
+/CrystalDiskInfo/
+/smartmontools/

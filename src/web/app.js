@@ -45,7 +45,7 @@ function currentDisk() {
 }
 
 function visibleDisks() {
-  const list = state.disks.filter((d) => !(state.ui.hideNoSmart && (d.error || d.health === "unknown")));
+  const list = state.disks.filter((d) => !(state.ui.hideNoSmart && (d.error || (d.health === "unknown" && !(d.attributes && d.attributes.length)))));
   const s = state.ui.sort;
   return [...list].sort((a, b) => {
     if (s === "model") return (a.model || "").localeCompare(b.model || "");
@@ -551,7 +551,7 @@ function renderHead() {
 function attrCols(d) {
   const key = (d && d.smart_key) || "";
   const cols = ["", "col_id", "col_attr"];
-  if (!(d && d.nvme) && key !== "SmartIndilinx") {
+  if (!(d && d.nvme) && key !== "SmartIndilinx" && key !== "SmartScsi") {
     cols.push("col_cur");
     if (key !== "SmartJMicron60x") {
       cols.push("col_worst", "col_thr");
@@ -605,6 +605,7 @@ function renderAttrs() {
   $("attrwrap").classList.toggle("hidden", state.ui.hideSmart);
   const d = currentDisk() || {};
   const isNvme = !!d.nvme;
+  const isScsi = d.smart_key === "SmartScsi";
   const cols = attrCols(d);
   const showCur = cols.includes("col_cur");
   const showWorst = cols.includes("col_worst");
@@ -638,7 +639,9 @@ function renderAttrs() {
     if (showCur) cells.push(a.current);
     if (showWorst) cells.push(a.worst);
     if (showThr) cells.push(a.threshold);
-    cells.push(fmtRaw(a, isNvme));
+    // SCSI pseudo rows carry their own raw text (counters, status words),
+    // not an ATA-style 48-bit value.
+    cells.push(isScsi ? (a.raw || "") : fmtRaw(a, isNvme));
     for (const c of cells) {
       const td = document.createElement("td");
       td.textContent = c;

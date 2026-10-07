@@ -49,9 +49,14 @@ dense, CDI-style UI.
   TRIM / VolatileWriteCache（直接读 Identify Controller，不依赖 smartctl 的 JSON 字段）
   均已接线；USB 桥接 NVMe 读不到 sysfs/ioctl 时传输模式显示 `--`，其他 NVMe 设备/桥接的
   兼容性未验证
+- **SAS / HBA / RAID 卡：结构支持已接线（仅 fake 盘验证，真机未验证）。** SAS 盘经
+  HBA（IT 模式）以 `-d scsi` 读出：固件号、SPC 标准、SAS 接口、通电时间/次数、温度，
+  错误计数/缺陷列表映射为 SMART 表内的伪属性行（健康等级只跟着 SMART Health Status 走，
+  没有该字段就显示未知，与 CDI 对 SAS 的无支持现状一致）。MegaRAID 卡（含 DELL PERC）
+  的物理成员盘由 `smartctl --scan-open` 自动枚举，SATA 成员自动套 SAT 读完整 ATA SMART；
+  卡上虚拟卷不显示（读不到 SMART，与 CDI 一致）。Areca/3ware 等不自动枚举的卡未处理
 - **USB：未验证。** USB 硬盘盒依赖 `smartctl --scan-open` 报出的 `-d sat/usb` 类型
   透传，没有做任何专门处理，可能可用但未测试
-- **SAS / HBA / RAID 卡：没有专门支持**，仅按 smartctl 默认路径工作
 - SSD 厂商识别与数值规则是从 CDI 移植的尽力而为版本（含 36 个厂商判定），未覆盖到的
   型号回落通用表（SmartSsd）与 smartctl 英文名
 - ATA 特性里的 DevSleep / Streaming 没有数据来源，不显示；NCQ 由

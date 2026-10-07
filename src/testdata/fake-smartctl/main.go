@@ -1,5 +1,7 @@
 // fake smartctl for local end-to-end testing (never packaged).
 // Devices: sda HDD (sat), sdb NVMe, sdc SATA SSD (Kingston SA400).
+// FAKE_DEV=sas exposes a SAS HDD (scsi), =raid a MegaRAID SATA member
+// (/dev/bus/0, megaraid,0).
 package main
 
 import (
@@ -137,6 +139,40 @@ const ssdFixture = `{
   ]}
 }`
 
+const sasFixture = `{
+  "json_format_version": [1, 0],
+  "smartctl": {"version": [7, 3], "exit_status": 0, "messages": []},
+  "device": {"name": "/dev/sda", "type": "scsi", "protocol": "SCSI"},
+  "scsi_vendor": "SEAGATE",
+  "scsi_product": "ST6000NM0034",
+  "model_name": "SEAGATE ST6000NM0034",
+  "scsi_model_name": "SEAGATE ST6000NM0034",
+  "scsi_revision": "E005",
+  "scsi_version": "SPC-4",
+  "scsi_transport_protocol": {"name": "SAS (SPL-4)", "value": 6},
+  "serial_number": "ZAD0F3DL0000C715DXFS",
+  "logical_unit_id": "0x5000c5008a1b2c3d",
+  "user_capacity": {"bytes": 6001175126016},
+  "rotation_rate": 7200,
+  "form_factor": {"scsi_value": 2, "name": "3.5 inches"},
+  "temperature": {"current": 39, "drive_trip": 60},
+  "power_on_time": {"hours": 52563, "minutes": 12},
+  "scsi_grown_defect_list": 2,
+  "scsi_pending_defects": {"count": 0},
+  "scsi_error_counter_log": {
+    "read": {"total_errors_corrected": 123456, "total_uncorrected_errors": 3},
+    "write": {"total_errors_corrected": 0, "total_uncorrected_errors": 0},
+    "verify": {"total_errors_corrected": 0, "total_uncorrected_errors": 0}
+  },
+  "scsi_start_stop_cycle_counter": {
+    "year_of_manufacture": "2019",
+    "week_of_manufacture": "30",
+    "Accumulated start-stop cycles": 42,
+    "Accumulated load-unload cycles": 812
+  },
+  "smart_support": {"available": true, "enabled": true}
+}`
+
 func main() {
 	args := os.Args[1:]
 	only := os.Getenv("FAKE_DEV") // "nvme" / "ssd" exposes a single /dev/sda device
@@ -151,6 +187,10 @@ func main() {
 				fmt.Println("/dev/sda -d nvme # /dev/sda, NVMe device")
 			case "ssd":
 				fmt.Println("/dev/sda -d sat # /dev/sda [SAT], ATA device")
+			case "sas":
+				fmt.Println("/dev/sda -d scsi # /dev/sda, SCSI device")
+			case "raid":
+				fmt.Println("/dev/bus/0 -d sat # /dev/bus/0 [megaraid_disk_00] [SAT], ATA device")
 			default:
 				fmt.Println("/dev/sda -d sat # /dev/sda [SAT], ATA device")
 				fmt.Println("/dev/sdb -d nvme # /dev/sdb, NVMe device")
@@ -178,6 +218,11 @@ func main() {
 		fmt.Printf(nvmeFixture, nvTemp, nvHours, nvTemp, nvHours)
 	case strings.Contains(joined, "-j") && (only == "ssd" || strings.Contains(joined, "/dev/sdc")):
 		fmt.Printf(ssdFixture, temp, hours, hours, hours)
+	case strings.Contains(joined, "-j") && (only == "sas" || strings.Contains(joined, "-d scsi")):
+		fmt.Print(sasFixture)
+	case strings.Contains(joined, "-j") && strings.Contains(joined, "/dev/bus/0"):
+		out := fmt.Sprintf(hddFixture, temp, hours, hours, hours, temp, temp)
+		fmt.Print(strings.Replace(out, "/dev/sda", "/dev/bus/0", 1))
 	case strings.Contains(joined, "-j"):
 		fmt.Printf(hddFixture, temp, hours, hours, hours, temp, temp)
 	default:

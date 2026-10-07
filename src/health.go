@@ -13,12 +13,33 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 	}
 	d.StatusReasons = nil
 
+	// SCSI/SAS pseudo rows carry their own LED rules (error/defect counts),
+	// assigned even when the disk health class stays unknown.
+	if d.SmartKey == "SmartScsi" {
+		for i := range d.Attributes {
+			d.Attributes[i].Status = scsiAttributeStatus(&d.Attributes[i])
+		}
+	}
+
 	if d.Error != "" || d.smartPassed == nil {
 		d.Health = "unknown"
 		return
 	}
 
 	var reasons []string
+
+	// SCSI/SAS: no ATA attributes and no counter-based rules — the health
+	// class follows smart_status only (absent -> unknown, handled above).
+	if d.SmartKey == "SmartScsi" {
+		if *d.smartPassed {
+			d.Health = "good"
+		} else {
+			d.Health = "bad"
+			reasons = append(reasons, "SMART status failed")
+		}
+		d.StatusReasons = reasons
+		return
+	}
 
 	if d.NVMe != nil {
 		status := ""
@@ -115,6 +136,9 @@ func (d *Disk) evaluateHealth(s diskSettings) {
 func attributeStatus(d *Disk, a *Attribute, s diskSettings) string {
 	if d.NVMe != nil {
 		return nvmeAttributeStatus(d, a, s)
+	}
+	if d.SmartKey == "SmartScsi" {
+		return scsiAttributeStatus(a)
 	}
 	if a.ID == 0xC2 {
 		return "good"
